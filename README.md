@@ -300,5 +300,5 @@ MIT — see [`yorumi-cli-main/LICENSE`](yorumi-cli-main/LICENSE)
 ---
 
 <div align="center">
-Made with 🌸 by <strong>Jhudel</strong> · Powered by Yorumi CLI
+Created by <strong>Jhudel</strong> · Powered by Yorumi CLI
 </div>
