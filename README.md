@@ -9,6 +9,18 @@ Erumi — Anime Streaming Platform
 *Search → Select → Stream — right from your desktop or any device on your Wi-Fi.*
 
 </div>
+<table>
+    <tr>
+<td></TD><img width="1553" height="860" alt="Home1" src="https://github.com/user-attachments/assets/6b3d487d-7c9c-4731-af4a-dc4197af59aa" /></td>
+<td><img width="1420" height="1348" alt="home3" src="https://github.com/user-attachments/assets/1dd38fa6-82b3-4ae1-a7f7-55ae42c85fcd" /></td>
+<td><img width="1621" height="1345" alt="home2" src="https://github.com/user-attachments/assets/c5da53ad-4dcd-4c56-810c-6da377bd9e2e" /></td>
+</tr>
+</table>
+<div>
+
+
+  
+</div>
 
 ---
 
