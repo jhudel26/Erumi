@@ -9,23 +9,26 @@ Erumi — Anime Streaming Platform
 *Search → Select → Stream — right from your desktop or any device on your Wi-Fi.*
 
 </div>
-## Web Interface
+## 🌐 Web Interface
 
-<div style="display: flex; overflow-x: auto; gap: 16px; padding: 10px 0;">
-  <img src="https://github.com/user-attachments/assets/6b3d487d-7c9c-4731-af4a-dc4197af59aa" alt="Home 1" width="500">
-  <img src="https://github.com/user-attachments/assets/1dd38fa6-82b3-4ae1-a7f7-55ae42c85fcd" alt="Home 3" width="500">
-  <img src="https://github.com/user-attachments/assets/c5da53ad-4dcd-4c56-810c-6da377bd9e2e" alt="Home 2" width="500">
-</div>
+<table>
+  <tr>
+    <td><img src="https://github.com/user-attachments/assets/6b3d487d-7c9c-4731-af4a-dc4197af59aa" alt="Web Interface - Home" width="500"></td>
+    <td><img src="https://github.com/user-attachments/assets/1dd38fa6-82b3-4ae1-a7f7-55ae42c85fcd" alt="Web Interface - Browse" width="500"></td>
+    <td><img src="https://github.com/user-attachments/assets/c5da53ad-4dcd-4c56-810c-6da377bd9e2e" alt="Web Interface - Player" width="500"></td>
+  </tr>
+</table>
 
-## Android Interface
+## 📱 Android Interface
 
-<div style="display: flex; overflow-x: auto; gap: 16px; padding: 10px 0;">
-  <img src="https://github.com/user-attachments/assets/febf6bcc-013f-4da9-8f59-85e730b4b501" alt="Android 1" width="250">
-  <img src="https://github.com/user-attachments/assets/fda421c7-cd9a-4ab4-8c33-c6e1e3246fa5" alt="Android 4" width="250">
-  <img src="https://github.com/user-attachments/assets/d1808b17-1ebc-4875-8539-0e52ac9438ad" alt="Android 3" width="250">
-  <img src="https://github.com/user-attachments/assets/bfed7640-e5a1-42c5-8e84-7d6043768cf7" alt="Android 2" width="250">
-</div>
-
+<table>
+  <tr>
+    <td><img src="https://github.com/user-attachments/assets/febf6bcc-013f-4da9-8f59-85e730b4b501" alt="Android Interface - Home" width="250"></td>
+    <td><img src="https://github.com/user-attachments/assets/fda421c7-cd9a-4ab4-8c33-c6e1e3246fa5" alt="Android Interface - Browse" width="250"></td>
+    <td><img src="https://github.com/user-attachments/assets/d1808b17-1ebc-4875-8539-0e52ac9438ad" alt="Android Interface - Player" width="250"></td>
+    <td><img src="https://github.com/user-attachments/assets/bfed7640-e5a1-42c5-8e84-7d6043768cf7" alt="Android Interface - Episodes" width="250"></td>
+  </tr>
+</table>
 ---
 
 ## 📖 What is Erumi?
