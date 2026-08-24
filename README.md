@@ -11,21 +11,20 @@ Erumi — Anime Streaming Platform
 </div>
 ## Web Interface
 
-<div style="display: flex; overflow-x: auto; gap: 12px;">
-<div style="display: flex; overflow-x: auto; gap: 10px; padding: 10px 0;">
-<img width="1553" height="860" alt="Home1" src="https://github.com/user-attachments/assets/6b3d487d-7c9c-4731-af4a-dc4197af59aa" />
-<img width="1420" height="1348" alt="home3" src="https://github.com/user-attachments/assets/1dd38fa6-82b3-4ae1-a7f7-55ae42c85fcd" />
-<img width="1621" height="1345" alt="home2" src="https://github.com/user-attachments/assets/c5da53ad-4dcd-4c56-810c-6da377bd9e2e" />
+<div style="display: flex; overflow-x: auto; gap: 16px; padding: 10px 0;">
+  <img src="https://github.com/user-attachments/assets/6b3d487d-7c9c-4731-af4a-dc4197af59aa" alt="Home 1" width="500">
+  <img src="https://github.com/user-attachments/assets/1dd38fa6-82b3-4ae1-a7f7-55ae42c85fcd" alt="Home 3" width="500">
+  <img src="https://github.com/user-attachments/assets/c5da53ad-4dcd-4c56-810c-6da377bd9e2e" alt="Home 2" width="500">
 </div>
 
 ## Android Interface
-<div style="display: flex; overflow-x: auto; gap: 12px;">
-<img width="621" height="1406" alt="android1" src="https://github.com/user-attachments/assets/febf6bcc-013f-4da9-8f59-85e730b4b501" />
-<img width="621" height="1398" alt="andoird4" src="https://github.com/user-attachments/assets/fda421c7-cd9a-4ab4-8c33-c6e1e3246fa5" />
-<img width="607" height="1401" alt="android3" src="https://github.com/user-attachments/assets/d1808b17-1ebc-4875-8539-0e52ac9438ad" />
-<img width="612" height="1396" alt="android2" src="https://github.com/user-attachments/assets/bfed7640-e5a1-42c5-8e84-7d6043768cf7" />
-</div>
 
+<div style="display: flex; overflow-x: auto; gap: 16px; padding: 10px 0;">
+  <img src="https://github.com/user-attachments/assets/febf6bcc-013f-4da9-8f59-85e730b4b501" alt="Android 1" width="250">
+  <img src="https://github.com/user-attachments/assets/fda421c7-cd9a-4ab4-8c33-c6e1e3246fa5" alt="Android 4" width="250">
+  <img src="https://github.com/user-attachments/assets/d1808b17-1ebc-4875-8539-0e52ac9438ad" alt="Android 3" width="250">
+  <img src="https://github.com/user-attachments/assets/bfed7640-e5a1-42c5-8e84-7d6043768cf7" alt="Android 2" width="250">
+</div>
 
 ---
 
