@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Erumi — Anime Streaming</title>
+  
+  <!-- Favicon & Branding Icons -->
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+  <link rel="shortcut icon" href="favicon.ico">
+  <link rel="manifest" href="site.webmanifest">
+  <meta name="theme-color" content="#050a0e">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <!-- HLS.js for direct in-browser HLS streaming (bundled for APK offline use) -->
+  <script src="hls.min.js"></script>
+  <!-- Feather Icons (bundled for APK offline use) -->
+  <script src="feather.min.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       CAPACITOR / APK SERVER CONNECT SCREEN
+       Shown when running in Android APK and no server is configured.
+       ═══════════════════════════════════════════════════════════ -->
+  <div id="serverConnectScreen" style="display:none; position:fixed; inset:0; z-index:9999; background:#050a0e; flex-direction:column; align-items:center; justify-content:center; padding:24px;">
+    <img src="erumi.png" alt="Erumi" style="width:90px; height:90px; border-radius:50%; margin-bottom:20px; box-shadow:0 0 40px rgba(20,184,166,0.4);">
+    <h1 style="color:#e8edf4; font-family:'Outfit',sans-serif; font-size:24px; font-weight:800; margin:0 0 6px;">Connect to Erumi Server</h1>
+    <p style="color:#6b7280; font-family:'Outfit',sans-serif; font-size:13px; text-align:center; margin:0 0 28px; max-width:320px;">Enter the IP address of the PC running <strong style="color:#14b8a6;">ErumiServer.exe</strong>. Both devices must be on the same Wi-Fi.</p>
+
+    <div style="width:100%; max-width:360px; background:#0d1b26; border:1px solid #1e3a4a; border-radius:14px; padding:20px;">
+      <label style="color:#9ca3af; font-size:12px; font-family:'Outfit',sans-serif; font-weight:600; display:block; margin-bottom:8px;">SERVER ADDRESS</label>
+      <input id="serverIpInput" type="url" inputmode="url" autocomplete="off"
+        placeholder="http://192.168.0.10:3000"
+        style="width:100%; box-sizing:border-box; height:48px; background:#050a0e; border:1.5px solid #1e3a4a; border-radius:10px; color:#e8edf4; font-family:'Outfit',sans-serif; font-size:15px; padding:0 14px; outline:none;">
+      <p id="serverConnectError" style="color:#f87171; font-size:12px; font-family:'Outfit',sans-serif; margin:8px 0 0; display:none;"></p>
+      <button onclick="window._erumiConnectServer()" id="serverConnectBtn"
+        style="margin-top:14px; width:100%; height:48px; background:linear-gradient(135deg,#14b8a6,#0d9488); border:none; border-radius:10px; color:#050a0e; font-family:'Outfit',sans-serif; font-size:15px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+        Connect →
+      </button>
+    </div>
+
+    <p style="color:#374151; font-size:11px; font-family:'Outfit',sans-serif; margin-top:18px; text-align:center;">
+      Browser users: just open <strong style="color:#14b8a6;">http://localhost:3000</strong> directly.
+    </p>
+  </div>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-inner container">
+      <!-- Left: Brand Logo & Mascot -->
+      <div class="brand" onclick="app.showBrowseView()">
+        <img class="brand-mascot-img" src="erumi.png" alt="Erumi Mascot">
+        <div class="brand-text">
+          <span class="brand-name">ERUMI</span>
+          <span class="brand-tag">STREAM</span>
+        </div>
+      </div>
+
+      <!-- Center: Desktop Search Bar (Hidden on Mobile) -->
+      <div class="search-container desktop-search-only">
+        <i data-feather="search" class="search-icon"></i>
+        <input 
+          type="text" 
+          id="searchInput" 
+          class="search-input" 
+          placeholder="Search anime... (Press '/' to focus)" 
+          autocomplete="off"
+        >
+        <button id="searchClearBtn" class="search-clear-btn" style="display: none;">
+          <i data-feather="x"></i>
+        </button>
+      </div>
+
+      <!-- Right: Desktop Nav Links -->
+      <nav class="nav-links">
+        <button class="nav-btn active" data-tab="latest" onclick="app.loadLatest()">
+          <i data-feather="home"></i>
+          <span>Home</span>
+        </button>
+        <button class="nav-btn" data-tab="search" onclick="app.showSearchView()">
+          <i data-feather="search"></i>
+          <span>Search</span>
+        </button>
+        <button class="nav-btn" data-tab="history" onclick="app.showHistoryView()">
+          <i data-feather="clock"></i>
+          <span>History</span>
+          <span id="historyCount" class="badge" style="display: none;">0</span>
+        </button>
+        <button class="nav-btn" data-tab="watchlist" onclick="app.showWatchlist()">
+          <i data-feather="bookmark"></i>
+          <span>Watchlist</span>
+          <span id="watchlistCount" class="badge">0</span>
+        </button>
+        <button class="nav-btn" onclick="app.openAboutModal()">
+          <i data-feather="info"></i>
+          <span>About Us</span>
+        </button>
+        <button class="nav-btn" onclick="app.openSettingsModal()">
+          <i data-feather="settings"></i>
+          <span>Settings</span>
+        </button>
+        <!-- Desktop only cast button to send to mobile via QR -->
+        <button class="nav-btn btn-lan desktop-only-btn" onclick="app.openLanModal()" title="Watch on Phone / Other Devices on Same Wi-Fi">
+          <i data-feather="smartphone"></i>
+          <span>Mobile / LAN</span>
+        </button>
+      </nav>
+
+      <!-- Right Header Actions (Mobile & Quick Actions) -->
+      <div class="header-right-actions">
+        <button class="mobile-header-btn mobile-only-btn" onclick="app.showSearchView()" title="Search Anime">
+          <i data-feather="search"></i>
+        </button>
+        <button class="mobile-header-btn mobile-only-btn" onclick="app.openSettingsModal()" title="Settings">
+          <i data-feather="settings"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main class="main-content">
+    
+    <!-- ═════════════════════════════════════════════════════
+         1. BROWSE VIEW (Home, Latest, Hero, Continue Watching)
+         ═════════════════════════════════════════════════════ -->
+    <div id="browseView" class="view-container">
+      
+      <!-- Streaming Platform Hero Showcase (Left Info + Right 3-Card Carousel) -->
+      <section id="heroSection" class="hero-streaming-banner container">
+        <div class="hero-banner-inner">
+          <div class="hero-bg" id="heroBg"></div>
+          <div class="hero-gradient-overlay"></div>
+          
+          <div class="hero-banner-content">
+            
+            <!-- LEFT SIDE: Title, Badges, Synopsis & Actions -->
+            <div class="hero-left-col">
+              <h1 class="hero-title" id="heroTitle">Discover Anime with Erumi</h1>
+              
+              <div class="hero-badge-row">
+                <span class="badge badge-status" id="heroStatusBadge">
+                  <span class="status-green-dot"></span>
+                  <span id="heroStatusText">RELEASING</span>
+                </span>
+                <span class="badge badge-type" id="heroTypeBadge">TV</span>
+                <span class="badge badge-score" id="heroScore" style="display:none;">⭐ 8.5</span>
+                <span class="badge badge-sub" id="heroYear">2026</span>
+                <span class="badge badge-sub" id="heroEps">HD · Sub/Dub</span>
+              </div>
+
+              <p class="hero-desc" id="heroDesc">
+                Instant high-quality anime streaming powered by Yorumi engine. Select any anime from the carousel or search to start streaming.
+              </p>
+
+              <div class="hero-actions-row">
+                <button class="btn btn-primary btn-hero-watch" id="heroPlayBtn" onclick="app.heroAction()">
+                  <i data-feather="play"></i>
+                  <span>Watch Now</span>
+                </button>
+                <button class="btn btn-glass btn-hero-detail" id="heroDetailsBtn" onclick="app.heroDetails()">
+                  <span>Detail</span>
+                  <i data-feather="chevron-right"></i>
+                </button>
+              </div>
+
+              <!-- Pagination Indicator Dots -->
+              <div class="hero-dots-indicator" id="heroDotsIndicator">
+                <!-- Injected via JavaScript -->
+              </div>
+            </div>
+
+            <!-- RIGHT SIDE: 3D 3-Card Overlapping Carousel -->
+            <div class="hero-right-col">
+              <div class="hero-3d-carousel" id="hero3DCarousel">
+                
+                <!-- Left Prev Card -->
+                <div class="carousel-3d-card card-prev" id="cardPrev" onclick="app.slide3DCarousel(-1)" title="Previous Anime">
+                  <img id="imgCardPrev" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="Previous Anime">
+                  <div class="card-glass-reflection"></div>
+                </div>
+
+                <!-- Center Active Card -->
+                <div class="carousel-3d-card card-active" id="cardActive" onclick="app.heroAction()" title="Watch Now">
+                  <img id="imgCardActive" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="Active Featured Anime">
+                  <div class="card-glass-reflection"></div>
+                  <div class="card-center-play">
+                    <i data-feather="play"></i>
+                  </div>
+                </div>
+
+                <!-- Right Next Card -->
+                <div class="carousel-3d-card card-next" id="cardNext" onclick="app.slide3DCarousel(1)" title="Next Anime">
+                  <img id="imgCardNext" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="Next Anime">
+                  <div class="card-glass-reflection"></div>
+                </div>
+
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      <!-- ═════════════════════════════════════════════════════
+           CONTINUE WATCHING SHELF (Home Screen)
+           ═════════════════════════════════════════════════════ -->
+      <section id="continueWatchingSection" class="container continue-section" style="display: none;">
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <div class="continue-header-icon-title">
+              <i data-feather="play-circle" class="continue-header-icon"></i>
+              <h2 class="section-title">Continue Watching</h2>
+            </div>
+            <span class="section-subtitle">Pick up right where you left off</span>
+          </div>
+          <button class="btn btn-sm btn-glass" onclick="app.showHistoryView()">View All</button>
+        </div>
+
+        <div class="continue-cards-shelf" id="continueCardsShelf">
+          <!-- Injected via JavaScript -->
+        </div>
+      </section>
+
+      <!-- Recommendations Section -->
+      <section id="recommendationsSection" class="container section-feed reco-section" style="display: none;">
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <h2 class="section-title">Recommended For You</h2>
+            <span class="section-subtitle" id="recommendationsSubtitle">Playable anime picked by Yorumi</span>
+          </div>
+        </div>
+        <div class="reco-shelf-row">
+          <button type="button" class="reco-scroll-btn" id="recoScrollPrev" aria-label="Scroll recommendations left" onclick="app.scrollRecoShelf(-1)">
+            <i data-feather="chevron-left"></i>
+          </button>
+          <div class="reco-shelf-viewport">
+            <div id="recommendationsGrid" class="reco-cards-shelf"></div>
+          </div>
+          <button type="button" class="reco-scroll-btn" id="recoScrollNext" aria-label="Scroll recommendations right" onclick="app.scrollRecoShelf(1)">
+            <i data-feather="chevron-right"></i>
+          </button>
+        </div>
+      </section>
+
+      <!-- Content Feed Section -->
+      <section class="container section-feed">
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <h2 class="section-title" id="sectionTitle">Latest Releases</h2>
+            <span class="section-subtitle" id="sectionSubtitle">Top 18 recently updated anime</span>
+          </div>
+          <div class="filter-pills" id="categoryPills">
+            <button class="pill active" id="pillLatest" onclick="app.loadLatest()">Latest</button>
+            <button class="pill" id="pillHistory" onclick="app.showHistoryView()">History</button>
+            <button class="pill" id="pillSaved" onclick="app.showWatchlist()">Saved</button>
+          </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loader" class="loader-container" style="display: none;">
+          <div class="loader-mascot-wrap">
+            <img class="loader-mascot-img" src="erumi.png" alt="Loading...">
+          </div>
+          <div class="spinner"></div>
+          <p class="loader-text" id="loaderText">Fetching anime data...</p>
+        </div>
+
+        <!-- Error / Empty State with Mascot -->
+        <div id="errorState" class="empty-state" style="display: none;">
+          <div class="empty-mascot-wrap">
+            <img class="empty-state-mascot" src="erumi.png" alt="Erumi Mascot">
+          </div>
+          <h3 id="errorTitle">Something went wrong</h3>
+          <p id="errorMessage">Could not fetch data from Yorumi engine.</p>
+          <div class="empty-actions" id="emptyActions">
+            <button class="btn btn-primary" onclick="app.retryLastAction()">Retry</button>
+          </div>
+        </div>
+
+        <!-- Anime Cards Grid -->
+        <div id="animeGrid" class="anime-grid">
+          <!-- Injected via JavaScript -->
+        </div>
+      </section>
+    </div>
+
+
+    <!-- ═════════════════════════════════════════════════════
+         2. DEDICATED SEARCH PAGE VIEW (Clean Mobile & Desktop)
+         ═════════════════════════════════════════════════════ -->
+    <div id="searchView" class="view-container search-view container" style="display: none;">
+      
+      <!-- Search Page Header Hero -->
+      <div class="search-page-hero">
+        <h2 class="search-page-heading">Search Anime</h2>
+        <p class="search-page-sub">Find series, movies, and episodes across the Yorumi database</p>
+        
+        <div class="search-page-input-wrap">
+          <i data-feather="search" class="search-page-icon"></i>
+          <input 
+            type="text" 
+            id="searchPageInput" 
+            class="search-page-input" 
+            placeholder="Type anime title (e.g. Solo Leveling, Frieren)..." 
+            autocomplete="off"
+          >
+          <button id="searchPageClearBtn" class="search-page-clear-btn" style="display: none;" onclick="app.clearSearchPage()">
+            <i data-feather="x"></i>
+          </button>
+        </div>
+
+        <!-- Quick Trending Search Tags -->
+        <div class="search-tags-section">
+          <span class="search-tags-label">Popular Searches:</span>
+          <div class="search-tags-list">
+            <button class="search-tag-chip" onclick="app.searchByTag('Solo Leveling')">Solo Leveling</button>
+            <button class="search-tag-chip" onclick="app.searchByTag('Jujutsu Kaisen')">Jujutsu Kaisen</button>
+            <button class="search-tag-chip" onclick="app.searchByTag('Frieren')">Frieren</button>
+            <button class="search-tag-chip" onclick="app.searchByTag('Demon Slayer')">Demon Slayer</button>
+            <button class="search-tag-chip" onclick="app.searchByTag('One Piece')">One Piece</button>
+            <button class="search-tag-chip" onclick="app.searchByTag('Bleach')">Bleach</button>
+            <button class="search-tag-chip" onclick="app.searchByTag('Attack on Titan')">Attack on Titan</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Search Results Area -->
+      <div class="search-results-section">
+        <div class="search-results-header" id="searchResultsHeader" style="display: none;">
+          <h3 class="search-results-title" id="searchResultsTitle">Results</h3>
+          <span class="search-results-count" id="searchResultsCount">0 titles found</span>
+        </div>
+
+        <!-- Search Loading State -->
+        <div id="searchLoader" class="loader-container" style="display: none;">
+          <div class="spinner"></div>
+          <p class="loader-text" id="searchLoaderText">Searching anime...</p>
+        </div>
+
+        <!-- Search Empty State -->
+        <div id="searchEmptyState" class="empty-state" style="display: none;">
+          <div class="empty-mascot-wrap">
+            <img class="empty-state-mascot" src="erumi.png" alt="Erumi Mascot">
+          </div>
+          <h3 id="searchEmptyTitle">No anime found</h3>
+          <p id="searchEmptyMessage">Try searching with different keywords or check spelling.</p>
+        </div>
+
+        <!-- Search Results Grid -->
+        <div id="searchResultsGrid" class="anime-grid">
+          <!-- Injected via JavaScript -->
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ═════════════════════════════════════════════════════
+         3. WATCH PAGE VIEW (Full Cinema Streaming Experience)
+         ═════════════════════════════════════════════════════ -->
+    <div id="watchView" class="view-container watch-view container" style="display: none;">
+      
+      <!-- Top Navigation Breadcrumbs -->
+      <div class="watch-nav-bar">
+        <button class="btn btn-sm btn-glass btn-back" onclick="app.showBrowseView()">
+          <i data-feather="arrow-left"></i>
+          <span>Back</span>
+        </button>
+        <div class="watch-breadcrumbs">
+          <span id="watchBreadcrumbAnime" class="crumb-anime">Anime Title</span>
+          <span class="crumb-sep">/</span>
+          <span id="watchBreadcrumbEp" class="crumb-ep">Episode 1</span>
+        </div>
+      </div>
+
+      <!-- Main Watch Layout (Video on Left, Episodes on Right) -->
+      <div class="watch-layout">
+        
+        <!-- Left Column: Video Player & Details -->
+        <div class="watch-main-column">
+          
+          <!-- Cinema Video Container -->
+          <div class="player-cinema-frame">
+            <div class="video-container" id="videoContainer">
+              <video id="videoPlayer" class="video-element" controls playsinline></video>
+              <div id="videoLoader" class="video-loader" style="display: none;">
+                <img class="loader-mascot-mini" src="erumi.png" alt="Streaming...">
+                <div class="spinner"></div>
+                <span id="videoStatusText">Resolving stream URL...</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Video Action Bar -->
+          <div class="watch-action-bar">
+            <div class="action-bar-left">
+              <button class="btn btn-sm btn-glass" id="prevEpBtn" onclick="app.playPrevEpisode()">
+                <i data-feather="skip-back"></i>
+                <span>Prev</span>
+              </button>
+              <button class="btn btn-sm btn-glass" id="nextEpBtn" onclick="app.playNextEpisode()">
+                <span>Next</span>
+                <i data-feather="skip-forward"></i>
+              </button>
+              
+              <label class="auto-next-toggle" title="Automatically play next episode when finished">
+                <input type="checkbox" id="autoNextCheck" checked>
+                <span class="toggle-slider"></span>
+                <span class="toggle-label">Auto-Next</span>
+              </label>
+            </div>
+
+            <div class="action-bar-right">
+              <button class="btn btn-sm btn-glass mobile-only-btn" id="fullscreenBtn" onclick="app.toggleFullscreen()" title="Fullscreen">
+                <i data-feather="maximize"></i>
+                <span>Fullscreen</span>
+              </button>
+              <button class="btn btn-sm btn-glass" id="mpvLaunchBtn" onclick="app.launchInMpv()" title="Stream natively in MPV desktop player">
+                <i data-feather="external-link"></i>
+                <span>MPV</span>
+              </button>
+              <button class="btn btn-sm btn-glass" id="watchSaveBtn" onclick="app.toggleCurrentWatchlist()">
+                <i data-feather="bookmark"></i>
+                <span id="watchSaveText">Save</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Anime Metadata & Details Card -->
+          <div class="watch-details-card">
+            <div class="watch-meta-head">
+              <div class="watch-title-wrap">
+                <h1 id="watchAnimeTitle" class="watch-title">Anime Title</h1>
+                <p id="watchAnimeSub" class="watch-sub">Japanese Romanized Title</p>
+              </div>
+              <div class="watch-badges">
+                <span class="badge badge-accent" id="watchEpBadge">Episode 1</span>
+                <span class="badge badge-sub" id="watchYearBadge">2026</span>
+                <span class="badge badge-score" id="watchScoreBadge" style="display:none;">⭐ 8.5</span>
+                <span class="badge badge-sub" id="watchQualityBadge">HD 1080p</span>
+              </div>
+            </div>
+            <div class="watch-divider"></div>
+            <div class="watch-info-section">
+              <h4 class="info-heading">About this series</h4>
+              <p id="watchAnimeDesc" class="info-text">
+                Stream episodes in high definition with instant HLS streaming. Use the episode list below/right to jump between episodes.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column: Episode List Drawer / Sidebar -->
+        <aside class="watch-sidebar">
+          <div class="sidebar-header">
+            <div class="sidebar-title-wrap">
+              <h3 class="sidebar-title">Episodes</h3>
+              <span id="sidebarEpCount" class="sidebar-count">0 episodes</span>
+            </div>
+          </div>
+
+          <!-- Episode Jump & Range Selector -->
+          <div class="sidebar-controls">
+            <div class="ep-search-wrap">
+              <i data-feather="hash"></i>
+              <input type="number" id="epJumpInput" placeholder="Ep #" min="1">
+              <button class="btn btn-sm btn-primary" onclick="app.jumpToEpisode()">Go</button>
+            </div>
+            <div class="ep-range-tabs" id="epRangeTabs">
+              <!-- Range tabs -->
+            </div>
+          </div>
+
+          <!-- Scrollable Episode Items List -->
+          <div class="sidebar-episodes-list" id="sidebarEpisodesList">
+            <!-- Injected via JavaScript -->
+          </div>
+        </aside>
+
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ═════════════════════════════════════════════════════
+       4. ABOUT US MODAL (Featuring Erumi Mascot)
+       ═════════════════════════════════════════════════════ -->
+  <div id="aboutModal" class="modal">
+    <div class="modal-backdrop" onclick="app.closeAboutModal()"></div>
+    <div class="modal-dialog about-dialog">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <h3 class="modal-title">About Erumi Stream</h3>
+          <span class="modal-subtitle">Fast, Ad-Free Anime Streaming Engine</span>
+        </div>
+        <button class="modal-close-btn" onclick="app.closeAboutModal()">
+          <i data-feather="x"></i>
+        </button>
+      </div>
+      <div class="about-modal-body">
+        <div class="about-mascot-hero">
+          <div class="about-mascot-glow"></div>
+          <img src="erumi.png" alt="Erumi Mascot" class="about-mascot-large">
+          <div class="about-mascot-badge">Meet Erumi</div>
+        </div>
+
+        <div class="about-text-content">
+          <h4>Welcome to Erumi!</h4>
+          <p>
+            Erumi is an open-source, cinema-grade anime streaming platform designed to give you an ad-free, ultra-responsive watching experience powered by the Yorumi backend engine.
+          </p>
+
+          <div class="about-features-grid">
+            <div class="about-feature-item">
+              <i data-feather="shield"></i>
+              <div>
+                <strong>100% Ad-Free & Private</strong>
+                <span>Zero trackers, zero popups, zero sponsored interruptions.</span>
+              </div>
+            </div>
+            <div class="about-feature-item">
+              <i data-feather="tv"></i>
+              <div>
+                <strong>Multi-Device LAN Stream</strong>
+                <span>Stream seamlessly to your Phone, Tablet, or TV on the same Wi-Fi.</span>
+              </div>
+            </div>
+            <div class="about-feature-item">
+              <i data-feather="zap"></i>
+              <div>
+                <strong>Fast HLS Direct Play</strong>
+                <span>Instant CDN proxy bypass with sub/dub and MPV player support.</span>
+              </div>
+            </div>
+            <div class="about-feature-item">
+              <i data-feather="star"></i>
+              <div>
+                <strong>AniList Metadata</strong>
+                <span>High-resolution posters, synopses, and community ratings.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="about-footer-meta">
+            <span>Version 2.0.0 · Teal Cinema Edition</span>
+            <span>Built for anime fans everywhere</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═════════════════════════════════════════════════════
+       5. MOBILE / LAN ACCESS MODAL (QR Code + Mascot)
+       ═════════════════════════════════════════════════════ -->
+  <div id="lanModal" class="modal">
+    <div class="modal-backdrop" onclick="app.closeLanModal()"></div>
+    <div class="modal-dialog lan-dialog">
+      <div class="modal-header">
+        <div class="lan-header-with-mascot">
+          <img class="lan-mascot-avatar" src="erumi.png" alt="Erumi Mascot">
+          <div class="modal-title-wrap">
+            <h3 class="modal-title">Watch with Erumi Anywhere!</h3>
+            <span class="modal-subtitle">Stream on Phone, Tablet, or TV on Same Wi-Fi</span>
+          </div>
+        </div>
+        <button class="modal-close-btn" onclick="app.closeLanModal()">
+          <i data-feather="x"></i>
+        </button>
+      </div>
+      <div class="lan-modal-body">
+        <div class="qr-container">
+          <img id="lanQrImage" class="qr-image" src="" alt="Scan QR Code to Stream on Mobile">
+          <p class="qr-label">Scan with your Phone / Tablet camera</p>
+        </div>
+        <div class="lan-url-box">
+          <span class="url-label">Or open this address in your browser:</span>
+          <div class="url-copy-row">
+            <input type="text" id="lanUrlInput" readonly value="http://192.168.0.16:3000">
+            <button class="btn btn-sm btn-primary" onclick="app.copyLanUrl()">
+              <i data-feather="copy"></i>
+              <span>Copy</span>
+            </button>
+          </div>
+        </div>
+        <div class="lan-tip">
+          <i data-feather="wifi"></i>
+          <span>Both devices must be connected to the same Wi-Fi network.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═════════════════════════════════════════════════════
+       7. JELLYFIN SETTINGS & DASHBOARD MODAL
+       ═════════════════════════════════════════════════════ -->
+  <div id="settingsModal" class="modal">
+    <div class="modal-backdrop" onclick="app.closeSettingsModal()"></div>
+    <div class="modal-dialog settings-dialog">
+      <div class="modal-header">
+        <div class="settings-header-title">
+          <i data-feather="sliders" class="settings-icon-header"></i>
+          <div class="modal-title-wrap">
+            <h3 class="modal-title">Erumi Settings</h3>
+            <span class="modal-subtitle">Server, Streaming & Performance Dashboard</span>
+          </div>
+        </div>
+        <button class="modal-close-btn" onclick="app.closeSettingsModal()">
+          <i data-feather="x"></i>
+        </button>
+      </div>
+
+      <div class="settings-modal-body">
+        <!-- Settings Sidebar Tabs -->
+        <div class="settings-tabs">
+          <button class="settings-tab-btn active" id="tabBtn_playback" onclick="app.switchSettingsTab('playback')">
+            <i data-feather="play-circle"></i>
+            <span>Playback</span>
+          </button>
+          <button class="settings-tab-btn" id="tabBtn_server" onclick="app.switchSettingsTab('server')">
+            <i data-feather="server"></i>
+            <span>Server & LAN</span>
+          </button>
+          <button class="settings-tab-btn" id="tabBtn_cache" onclick="app.switchSettingsTab('cache')">
+            <i data-feather="database"></i>
+            <span>Cache & Data</span>
+          </button>
+          <button class="settings-tab-btn" id="tabBtn_system" onclick="app.switchSettingsTab('system')">
+            <i data-feather="cpu"></i>
+            <span>Engine Info</span>
+          </button>
+        </div>
+
+        <!-- Settings Content Panes -->
+        <div class="settings-panes">
+          
+          <!-- Pane 1: Playback -->
+          <div id="panePlayback" class="settings-pane active">
+            <h4 class="settings-pane-heading">Playback Preferences</h4>
+            <div class="setting-group">
+              <label class="setting-label" for="settingQuality">Preferred Stream Quality</label>
+              <select id="settingQuality" class="setting-select">
+                <option value="1080p">1080p Full HD (Default)</option>
+                <option value="720p">720p HD</option>
+                <option value="auto">Auto / Source Adaptive</option>
+              </select>
+              <span class="setting-desc">Highest available quality will be selected automatically.</span>
+            </div>
+
+            <div class="setting-group">
+              <label class="setting-label" for="settingAudio">Default Audio / Format</label>
+              <select id="settingAudio" class="setting-select">
+                <option value="sub">Subtitled (Japanese with English Subs)</option>
+                <option value="dub">Dubbed (English Voiceover)</option>
+              </select>
+              <span class="setting-desc">Preferred stream track when multiple versions are available.</span>
+            </div>
+
+            <div class="setting-group">
+              <div class="setting-toggle-row">
+                <div>
+                  <div class="setting-toggle-title">Auto-Play Next Episode</div>
+                  <span class="setting-desc">Automatically advance to the next aired episode when finished.</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="settingAutoNext" checked>
+                  <span class="toggle-track"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-group">
+              <div class="setting-toggle-row">
+                <div>
+                  <div class="setting-toggle-title">Auto-Rotate in Fullscreen</div>
+                  <span class="setting-desc">Switch to landscape automatically when video enters fullscreen (recommended for phones).</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="settingAutoRotate" checked>
+                  <span class="toggle-track"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pane 2: Server & Network -->
+          <div id="paneServer" class="settings-pane">
+            <h4 class="settings-pane-heading">Server & Network Configuration</h4>
+            <div class="setting-group">
+              <label class="setting-label" for="settingPort">Server Port</label>
+              <input type="number" id="settingPort" class="setting-input" value="3000" min="1024" max="65535">
+              <span class="setting-desc">Local HTTP port used by Erumi Server.</span>
+            </div>
+
+            <div class="setting-group">
+              <div class="setting-toggle-row">
+                <div>
+                  <div class="setting-toggle-title">Auto-Launch Browser on Startup</div>
+                  <span class="setting-desc">Open the web interface in your default browser when ErumiServer.exe starts.</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="settingAutoLaunch" checked>
+                  <span class="toggle-track"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="setting-group">
+              <div class="setting-toggle-row">
+                <div>
+                  <div class="setting-toggle-title">Local Network (LAN) Streaming</div>
+                  <span class="setting-desc">Allow devices on your local Wi-Fi to connect and stream.</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="settingBindAll" checked>
+                  <span class="toggle-track"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pane 3: Cache & Storage -->
+          <div id="paneCache" class="settings-pane">
+            <h4 class="settings-pane-heading">Cache Management</h4>
+            <p class="setting-desc" style="margin-bottom: 16px;">
+              Erumi stores streaming manifests and AniList metadata in high-speed RAM and local storage for instant browsing.
+            </p>
+
+            <div class="cache-stat-grid">
+              <div class="cache-stat-card">
+                <span class="cache-stat-num" id="statCliCache">0</span>
+                <span class="cache-stat-label">In-Memory Cache Entries</span>
+              </div>
+              <div class="cache-stat-card">
+                <span class="cache-stat-num" id="statHistory">0</span>
+                <span class="cache-stat-label">Watch History Items</span>
+              </div>
+              <div class="cache-stat-card">
+                <span class="cache-stat-num" id="statWatchlist">0</span>
+                <span class="cache-stat-label">Saved to Watchlist</span>
+              </div>
+            </div>
+
+            <div class="cache-action-row" style="margin-top: 20px;">
+              <button class="btn btn-sm btn-glass" onclick="app.clearBackendCache()">
+                <i data-feather="trash-2"></i>
+                <span>Flush In-Memory Cache</span>
+              </button>
+              <button class="btn btn-sm btn-glass" onclick="app.clearBrowserCache()">
+                <i data-feather="refresh-cw"></i>
+                <span>Reset Image Cache</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Pane 4: System Info -->
+          <div id="paneSystem" class="settings-pane">
+            <h4 class="settings-pane-heading">System & Engine Info</h4>
+            <div class="system-info-list">
+              <div class="sys-info-row">
+                <span>Application</span>
+                <strong>Erumi Server (Teal Cinema Edition)</strong>
+              </div>
+              <div class="sys-info-row">
+                <span>Server Version</span>
+                <strong>v2.5.0</strong>
+              </div>
+              <div class="sys-info-row">
+                <span>Streaming Engine</span>
+                <strong>Yorumi CLI + HLS.js Proxy</strong>
+              </div>
+              <div class="sys-info-row">
+                <span>Native Desktop Player</span>
+                <strong id="sysMpvStatus">Checking...</strong>
+              </div>
+              <div class="sys-info-row">
+                <span>Connected Server</span>
+                <strong id="sysLanAddress">http://localhost:3000</strong>
+              </div>
+            </div>
+            <!-- Change Server (visible in APK mode) -->
+            <div id="changeServerRow" style="display:none; margin-top:16px;">
+              <button class="btn btn-sm btn-glass" onclick="app.changeServer()" style="width:100%;">
+                <i data-feather="wifi"></i>
+                <span>Change Server Address</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="settings-modal-footer">
+        <button class="btn btn-sm btn-glass" onclick="app.closeSettingsModal()">Cancel</button>
+        <button class="btn btn-sm btn-primary" onclick="app.saveSettingsFromModal()">
+          <i data-feather="check"></i>
+          <span>Save Changes</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═════════════════════════════════════════════════════
+       6. MOBILE BOTTOM NAVIGATION BAR (No Cast button on mobile!)
+       ═════════════════════════════════════════════════════ -->
+  <nav class="mobile-bottom-nav">
+    <button class="mobile-nav-item active" id="mobNavHome" onclick="app.loadLatest()">
+      <i data-feather="home"></i>
+      <span>Home</span>
+    </button>
+    <button class="mobile-nav-item" id="mobNavSearch" onclick="app.showSearchView()">
+      <i data-feather="search"></i>
+      <span>Search</span>
+    </button>
+    <button class="mobile-nav-item" id="mobNavHistory" onclick="app.showHistoryView()">
+      <i data-feather="clock"></i>
+      <span>History</span>
+    </button>
+    <button class="mobile-nav-item" id="mobNavSaved" onclick="app.showWatchlist()">
+      <i data-feather="bookmark"></i>
+      <span>Saved</span>
+    </button>
+  </nav>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="app.js"></script>
+  <script>
+    feather.replace();
+  </script>
+</body>
+</html>

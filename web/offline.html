@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Erumi — Offline</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg-main: #050a0e;
+      --bg-surface: #0a1218;
+      --bg-surface-elevated: #101d27;
+      --text-primary: #f3f9fc;
+      --text-secondary: #94a9b8;
+      --text-dim: #5a7082;
+      --accent: #14b8a6;
+      --accent-glow: rgba(45, 212, 191, 0.35);
+      --accent-hover: #2dd4bf;
+      --shadow-glow: 0 0 30px var(--accent-glow);
+    }
+
+    body {
+      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-main);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .offline-container {
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+      animation: fadeInUp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(24px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Mascot Glow Ring */
+    .mascot-wrapper {
+      position: relative;
+      display: inline-block;
+      margin-bottom: 24px;
+    }
+
+    .mascot-glow {
+      position: absolute;
+      inset: -20px;
+      border-radius: 50%;
+      background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+      animation: glowPulse 2.5s ease-in-out infinite alternate;
+      pointer-events: none;
+    }
+
+    @keyframes glowPulse {
+      0% { transform: scale(0.92); opacity: 0.5; }
+      100% { transform: scale(1.12); opacity: 0.9; }
+    }
+
+    .mascot-img {
+      position: relative;
+      z-index: 2;
+      width: 90px;
+      height: 90px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 3px solid var(--accent);
+      box-shadow: 0 8px 32px var(--accent-glow);
+      animation: floatMascot 3s ease-in-out infinite;
+    }
+
+    @keyframes floatMascot {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-8px); }
+    }
+
+    /* Status Badge */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #f87171;
+      margin-bottom: 18px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ef4444;
+      animation: pulseDot 1.2s ease-in-out infinite;
+    }
+
+    @keyframes pulseDot {
+      0%, 100% { opacity: 0.4; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.1); }
+    }
+
+    /* Title & Description */
+    h1 {
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 10px;
+      color: var(--text-primary);
+    }
+
+    .subtitle {
+      font-size: 15px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      margin-bottom: 28px;
+    }
+
+    /* Action Buttons */
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 32px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      height: 48px;
+      padding: 0 28px;
+      border-radius: 12px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+      border: none;
+      text-decoration: none;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #050a0e;
+      box-shadow: 0 4px 20px var(--accent-glow);
+    }
+
+    .btn-primary:hover, .btn-primary:active {
+      background: var(--accent-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px var(--accent-glow);
+    }
+
+    .btn-secondary {
+      background: var(--bg-surface-elevated);
+      border: 1px solid rgba(45, 212, 191, 0.15);
+      color: var(--text-secondary);
+    }
+
+    .btn-secondary:hover, .btn-secondary:active {
+      background: rgba(45, 212, 191, 0.08);
+      border-color: var(--accent);
+      color: var(--text-primary);
+    }
+
+    .btn svg {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+    }
+
+    /* Offline Features Grid */
+    .features-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .feature-card {
+      padding: 14px 12px;
+      background: var(--bg-surface);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      text-align: center;
+    }
+
+    .feature-card svg {
+      width: 20px;
+      height: 20px;
+      color: var(--accent);
+      margin-bottom: 6px;
+    }
+
+    .feature-card .label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-dim);
+      display: block;
+    }
+
+    .feature-card .value {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: block;
+      margin-top: 2px;
+    }
+
+    /* Footer */
+    .footer {
+      margin-top: 24px;
+      font-size: 12px;
+      color: var(--text-dim);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .footer a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .footer a:hover {
+      text-decoration: underline;
+    }
+
+    /* Retry Countdown */
+    .retry-countdown {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-top: 12px;
+      opacity: 0.7;
+    }
+
+    /* Responsive */
+    @media (max-width: 480px) {
+      .features-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .feature-card {
+        padding: 10px 8px;
+      }
+
+      h1 {
+        font-size: 22px;
+      }
+
+      .btn {
+        height: 44px;
+        font-size: 14px;
+      }
+
+      .mascot-img {
+        width: 72px;
+        height: 72px;
+      }
+    }
+
+    @media (max-width: 360px) {
+      .features-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Dark scrollbar */
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--bg-main);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--bg-surface-elevated);
+      border-radius: 9999px;
+    }
+  </style>
+</head>
+<body>
+  <div class="offline-container">
+    <!-- Mascot -->
+    <div class="mascot-wrapper">
+      <div class="mascot-glow"></div>
+      <img class="mascot-img" src="/erumi.png" alt="Erumi Mascot" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2290%22 height=%2290%22%3E%3Crect width=%2290%22 height=%2290%22 fill=%22%23101d27%22 rx=%2245%22/%3E%3Ctext x=%2245%22 y=%2252%22 text-anchor=%22middle%22 font-size=%2232%22 font-weight=%22800%22 fill=%22%2314b8a6%22 font-family=%22sans-serif%22%3EE%3C/text%3E%3C/svg%3E'">
+    </div>
+
+    <!-- Status -->
+    <div class="status-badge">
+      <span class="status-dot"></span>
+      You're Offline
+    </div>
+
+    <!-- Title -->
+    <h1>📡 Connection Lost</h1>
+    <p class="subtitle">
+      It looks like you've lost your internet connection. 
+      Don't worry — your watch history and saved anime are safe.
+    </p>
+
+    <!-- Actions -->
+    <div class="actions">
+      <button class="btn btn-primary" onclick="location.reload()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+        </svg>
+        Retry Connection
+      </button>
+      
+      <a href="/" class="btn btn-secondary">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          <polyline points="9 22 9 12 15 12 15 22"></polyline>
+        </svg>
+        Go to Homepage
+      </a>
+    </div>
+
+    <!-- Features (cached data) -->
+    <div class="features-grid" id="cachedInfo">
+      <div class="feature-card">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+        <span class="label">Watch History</span>
+        <span class="value" id="historyCount">—</span>
+      </div>
+      <div class="feature-card">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+        </svg>
+        <span class="label">Watchlist</span>
+        <span class="value" id="watchlistCount">—</span>
+      </div>
+      <div class="feature-card">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <span class="label">Cached Anime</span>
+        <span class="value" id="cachedCount">—</span>
+      </div>
+      <div class="feature-card">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+          <line x1="16" y1="2" x2="16" y2="6"></line>
+          <line x1="8" y1="2" x2="8" y2="6"></line>
+          <line x1="3" y1="10" x2="21" y2="10"></line>
+        </svg>
+        <span class="label">Last Active</span>
+        <span class="value" id="lastActive">—</span>
+      </div>
+    </div>
+
+    <!-- Retry countdown (optional) -->
+    <div class="retry-countdown" id="countdownText">
+      Auto-retry in <span id="countdownTimer">30</span>s
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <span>Erumi — Your offline-ready anime companion</span>
+      <span>v2.5.1 · <a href="javascript:location.reload()">Refresh</a> when online</span>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      // Try to load cached data from localStorage
+      function loadFromStorage(key, fallback) {
+        try {
+          const data = localStorage.getItem(key);
+          return data ? JSON.parse(data) : fallback;
+        } catch {
+          return fallback;
+        }
+      }
+
+      // Update stats from localStorage
+      function updateCachedStats() {
+        const history = loadFromStorage('erumi_history', {});
+        const watchlist = loadFromStorage('erumi_watchlist', []);
+        const metaCache = loadFromStorage('erumi_meta_cache_v2', {});
+
+        const historyCount = Object.keys(history).length;
+        document.getElementById('historyCount').textContent = historyCount || '0';
+        document.getElementById('watchlistCount').textContent = watchlist.length || '0';
+        document.getElementById('cachedCount').textContent = Object.keys(metaCache).length || '0';
+
+        // Last active time
+        const lastActive = loadFromStorage('erumi_last_active', null);
+        if (lastActive) {
+          const diff = Math.floor((Date.now() - lastActive) / 1000);
+          if (diff < 60) {
+            document.getElementById('lastActive').textContent = 'Just now';
+          } else if (diff < 3600) {
+            document.getElementById('lastActive').textContent = Math.floor(diff / 60) + 'm ago';
+          } else if (diff < 86400) {
+            document.getElementById('lastActive').textContent = Math.floor(diff / 3600) + 'h ago';
+          } else {
+            document.getElementById('lastActive').textContent = Math.floor(diff / 86400) + 'd ago';
+          }
+        } else {
+          document.getElementById('lastActive').textContent = '—';
+        }
+      }
+
+      // Countdown timer for auto-retry
+      let countdown = 30;
+      const timerEl = document.getElementById('countdownTimer');
+
+      function updateCountdown() {
+        if (countdown <= 0) {
+          location.reload();
+          return;
+        }
+        timerEl.textContent = countdown;
+        countdown--;
+      }
+
+      // Check online status and reload if back online
+      function checkOnlineStatus() {
+        if (navigator.onLine) {
+          location.reload();
+        }
+      }
+
+      // Listen for online event
+      window.addEventListener('online', () => {
+        // Reload immediately when connection returns
+        location.reload();
+      });
+
+      // Start countdown
+      updateCountdown();
+      setInterval(updateCountdown, 1000);
+
+      // Also check every 5 seconds if online
+      setInterval(checkOnlineStatus, 5000);
+
+      // Update cached stats
+      updateCachedStats();
+
+      // Store current time as last active (for offline page display)
+      try {
+        localStorage.setItem('erumi_last_active', JSON.stringify(Date.now()));
+      } catch {}
+
+      // Feature: Click on any feature card to try reloading
+      document.querySelectorAll('.feature-card').forEach(card => {
+        card.style.cursor = 'pointer';
+        card.addEventListener('click', () => {
+          if (navigator.onLine) {
+            location.reload();
+          } else {
+            // Pulse the retry button to draw attention
+            const btn = document.querySelector('.btn-primary');
+            btn.style.transform = 'scale(1.05)';
+            setTimeout(() => { btn.style.transform = ''; }, 300);
+          }
+        });
+      });
+
+      // If user clicks anywhere, try to reload if online
+      document.addEventListener('click', () => {
+        if (navigator.onLine) {
+          location.reload();
+        }
+      });
+
+      console.log('[Erumi Offline] Ready. Auto-retry in ' + countdown + 's');
+    })();
+  </script>
+</body>
+</html>
