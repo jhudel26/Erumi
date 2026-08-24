@@ -1,0 +1,409 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Erumi</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; width: 100%; background: #050a0e; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #e8edf4; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    
+    /* Animated Background */
+    .bg-animation {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      background: linear-gradient(135deg, #050a0e 0%, #0d1b26 50%, #050a0e 100%);
+      background-size: 400% 400%;
+      animation: gradientShift 15s ease infinite;
+    }
+    
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    
+    /* Particles */
+    .particles {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      overflow: hidden;
+    }
+    
+    .particle {
+      position: absolute;
+      width: 4px;
+      height: 4px;
+      background: #14b8a6;
+      border-radius: 50%;
+      opacity: 0.3;
+      animation: float 20s infinite;
+    }
+    
+    @keyframes float {
+      0%, 100% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+      10% { opacity: 0.3; }
+      90% { opacity: 0.3; }
+      100% { transform: translateY(-100vh) rotate(720deg); opacity: 0; }
+    }
+    
+    /* Intro Splash Screen */
+    .intro-splash {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #050a0e;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      animation: fadeOut 0.8s ease-out 2.5s forwards;
+    }
+    
+    .intro-logo {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      overflow: hidden;
+      box-shadow: 0 0 80px rgba(20,184,166,0.5);
+      animation: logoPulse 2s ease-in-out infinite, logoScale 0.8s ease-out;
+      background: #0d1b26;
+    }
+    
+    .intro-logo img { width: 100%; height: 100%; object-fit: cover; }
+    
+    @keyframes logoPulse {
+      0%, 100% { box-shadow: 0 0 80px rgba(20,184,166,0.5); }
+      50% { box-shadow: 0 0 120px rgba(20,184,166,0.8); }
+    }
+    
+    @keyframes logoScale {
+      0% { transform: scale(0); opacity: 0; }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    
+    @keyframes fadeOut {
+      to { opacity: 0; pointer-events: none; }
+    }
+    
+    .intro-text {
+      margin-top: 24px;
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      animation: slideUp 1s ease-out 0.5s both;
+    }
+    
+    @keyframes slideUp {
+      from { transform: translateY(30px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    
+    /* Main Screen */
+    .screen { 
+      width: 100%; 
+      max-width: 400px; 
+      padding: 32px 24px; 
+      display: flex; 
+      flex-direction: column; 
+      align-items: center; 
+      opacity: 0;
+      animation: screenFadeIn 1s ease-out 2.8s both;
+    }
+    
+    @keyframes screenFadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    
+    .logo { 
+      width: 88px; 
+      height: 88px; 
+      border-radius: 50%; 
+      overflow: hidden; 
+      box-shadow: 0 0 48px rgba(20,184,166,0.35); 
+      margin-bottom: 20px; 
+      background: #0d1b26;
+      animation: logoFloat 3s ease-in-out infinite;
+    }
+    
+    @keyframes logoFloat {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+    
+    .logo img { width: 100%; height: 100%; object-fit: cover; }
+    
+    h1 { 
+      font-size: 26px; 
+      font-weight: 800; 
+      letter-spacing: -0.5px; 
+      margin-bottom: 8px; 
+      text-align: center;
+      animation: textReveal 0.8s ease-out 3s both;
+    }
+    
+    @keyframes textReveal {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    h1 span { color: #14b8a6; }
+    
+    .sub { 
+      font-size: 13px; 
+      color: #6b7280; 
+      text-align: center; 
+      line-height: 1.6; 
+      margin-bottom: 32px; 
+      max-width: 300px;
+      animation: textReveal 0.8s ease-out 3.2s both;
+    }
+    
+    .card { 
+      width: 100%; 
+      background: #0d1b26; 
+      border: 1px solid #1e3a4a; 
+      border-radius: 16px; 
+      padding: 22px;
+      animation: cardSlide 0.8s ease-out 3.4s both;
+    }
+    
+    @keyframes cardSlide {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    label { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #6b7280; text-transform: uppercase; margin-bottom: 10px; }
+    input { width: 100%; height: 50px; background: #050a0e; border: 1.5px solid #1e3a4a; border-radius: 10px; color: #e8edf4; font-size: 15px; padding: 0 14px; outline: none; font-family: monospace; transition: border-color 0.3s, box-shadow 0.3s; }
+    input:focus { border-color: #14b8a6; box-shadow: 0 0 20px rgba(20,184,166,0.3); }
+    .error { display: none; color: #f87171; font-size: 12px; margin-top: 8px; line-height: 1.5; }
+    button { margin-top: 14px; width: 100%; height: 50px; background: linear-gradient(135deg, #14b8a6, #0d9488); border: none; border-radius: 10px; color: #050a0e; font-size: 15px; font-weight: 800; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+    button:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(20,184,166,0.4); }
+    button:active { transform: translateY(0); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .qr-btn { background: linear-gradient(135deg, #0d9488, #0f766e); margin-top: 10px; }
+    .hint { margin-top: 24px; font-size: 12px; color: #374151; text-align: center; line-height: 1.6; animation: textReveal 0.8s ease-out 3.6s both; }
+    .spinner-wrap { display: none; flex-direction: column; align-items: center; gap: 14px; margin-top: 20px; }
+    .spinner { width: 36px; height: 36px; border: 3px solid #1e3a4a; border-top-color: #14b8a6; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .stext { color: #6b7280; font-size: 13px; text-align: center; }
+    .qr-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #050a0e; z-index: 1000; flex-direction: column; align-items: center; justify-content: center; animation: modalFadeIn 0.3s ease-out; }
+    .qr-modal.active { display: flex; }
+    @keyframes modalFadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    .qr-header { width: 100%; max-width: 400px; padding: 20px; display: flex; justify-content: space-between; align-items: center; }
+    .qr-title { font-size: 18px; font-weight: 700; }
+    .qr-close { background: #1e3a4a; border: none; color: #e8edf4; width: 40px; height: 40px; border-radius: 50%; font-size: 20px; cursor: pointer; margin: 0; transition: background 0.2s; }
+    .qr-close:hover { background: #14b8a6; }
+    #reader { width: 100%; max-width: 400px; }
+    #reader video { object-fit: cover; border-radius: 12px; }
+  </style>
+</head>
+<body>
+  <!-- Animated Background -->
+  <div class="bg-animation"></div>
+  
+  <!-- Floating Particles -->
+  <div class="particles" id="particles"></div>
+  
+  <!-- Intro Splash Screen -->
+  <div class="intro-splash">
+    <div class="intro-logo">
+      <img src="erumi.png" alt="Erumi" onerror="this.style.display='none'">
+    </div>
+    <div class="intro-text">ERUMI</div>
+  </div>
+  
+  <!-- Main Screen -->
+  <div class="screen">
+    <div class="logo"><img src="erumi.png" alt="Erumi" onerror="this.style.display='none'"></div>
+    <h1>ERUMI <span>STREAM</span></h1>
+    <p class="sub">Enter the IP of the PC running <strong style="color:#14b8a6">ErumiServer.exe</strong> on your local Wi-Fi network.</p>
+    <div class="card" id="setupCard">
+      <label>Server Address</label>
+      <input id="serverInput" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="http://192.168.1.100:3000">
+      <p class="error" id="errorMsg"></p>
+      <button id="connectBtn" onclick="doConnect()">Connect to Server</button>
+      <button id="qrBtn" class="qr-btn" onclick="openQRScanner()">Scan QR Code</button>
+    </div>
+    <div class="spinner-wrap" id="spinnerWrap">
+      <div class="spinner"></div>
+      <span class="stext" id="stext">Connecting...</span>
+    </div>
+    <p class="hint">Both devices must be on the same Wi-Fi.<br>To change server: clear app data and relaunch.</p>
+  </div>
+  
+  <div class="qr-modal" id="qrModal">
+    <div class="qr-header">
+      <span class="qr-title">Scan QR Code</span>
+      <button class="qr-close" onclick="closeQRScanner()">×</button>
+    </div>
+    <div id="reader"></div>
+  </div>
+  <script>
+    // Generate floating particles
+    (function() {
+      var particlesContainer = document.getElementById('particles');
+      var particleCount = 30;
+      
+      for (var i = 0; i < particleCount; i++) {
+        var particle = document.createElement('div');
+        particle.className = 'particle';
+        particle.style.left = Math.random() * 100 + '%';
+        particle.style.animationDelay = Math.random() * 20 + 's';
+        particle.style.animationDuration = (15 + Math.random() * 10) + 's';
+        particlesContainer.appendChild(particle);
+      }
+    })();
+
+    // Logo animation sequence - simple fade only
+    (function() {
+      var mainLogo = document.querySelector('.logo');
+      // Show main logo after splash fades
+      setTimeout(function() {
+        mainLogo.style.opacity = '1';
+        mainLogo.style.animation = 'logoFloat 3s ease-in-out infinite';
+      }, 3300);
+    })();
+
+    (function(){
+      var saved = localStorage.getItem('erumi_server_url');
+      if (saved) { window.location.replace(saved); return; }
+      var last = localStorage.getItem('erumi_last_url');
+      if (last) document.getElementById('serverInput').value = last;
+    })();
+
+    async function doConnect() {
+      var input = document.getElementById('serverInput');
+      var btn = document.getElementById('connectBtn');
+      var errEl = document.getElementById('errorMsg');
+      var card = document.getElementById('setupCard');
+      var spinner = document.getElementById('spinnerWrap');
+      var stext = document.getElementById('stext');
+      var logo = document.querySelector('.logo');
+      var url = (input.value || '').trim().replace(/\/$/, '');
+      if (!url) { showErr('Please enter a server address.'); return; }
+      if (!url.startsWith('http')) url = 'http://' + url;
+      input.value = url;
+      localStorage.setItem('erumi_last_url', url);
+      errEl.style.display = 'none';
+      btn.disabled = true;
+      card.style.display = 'none';
+      spinner.style.display = 'flex';
+      stext.textContent = 'Connecting to ' + url + '...';
+      
+      // Animate logo to connecting state
+      if (logo) {
+        logo.style.transition = 'all 0.5s ease';
+        logo.style.transform = 'scale(0.6)';
+        logo.style.opacity = '0.7';
+      }
+      try {
+        var ctrl = new AbortController();
+        var t = setTimeout(function(){ ctrl.abort(); }, 6000);
+        var res = await fetch(url + '/api/status', { signal: ctrl.signal });
+        clearTimeout(t);
+        var data = await res.json();
+        if (data && data.status === 'ok') {
+          stext.textContent = 'Connected! Loading Erumi...';
+          localStorage.setItem('erumi_server_url', url);
+          setTimeout(function(){ window.location.replace(url); }, 500);
+        } else { throw new Error('Bad response'); }
+      } catch(e) {
+        spinner.style.display = 'none';
+        card.style.display = 'block';
+        btn.disabled = false;
+        // Restore logo state
+        if (logo) {
+          logo.style.transform = '';
+          logo.style.opacity = '';
+        }
+        showErr(e.name === 'AbortError'
+          ? 'Timed out. Make sure ErumiServer.exe is running and both devices are on the same Wi-Fi.'
+          : 'Cannot connect to ' + url + '. Check the address and try again.');
+      }
+    }
+
+    function showErr(msg) {
+      var el = document.getElementById('errorMsg');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    document.getElementById('serverInput').addEventListener('keydown', function(e){
+      if (e.key === 'Enter') doConnect();
+    });
+
+    var html5QrcodeScanner = null;
+
+    function openQRScanner() {
+      var modal = document.getElementById('qrModal');
+      modal.classList.add('active');
+      
+      if (!html5QrcodeScanner) {
+        html5QrcodeScanner = new Html5Qrcode("reader");
+      }
+      
+      var config = { fps: 10, qrbox: { width: 250, height: 250 } };
+      
+      html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess)
+        .catch(function(err) {
+          console.error("Error starting scanner", err);
+          alert("Unable to access camera. Please check camera permissions.");
+          closeQRScanner();
+        });
+    }
+
+    function closeQRScanner() {
+      var modal = document.getElementById('qrModal');
+      modal.classList.remove('active');
+      
+      if (html5QrcodeScanner && html5QrcodeScanner.isScanning) {
+        html5QrcodeScanner.stop().then(function() {
+          html5QrcodeScanner.clear();
+        }).catch(function(err) {
+          console.error("Error stopping scanner", err);
+        });
+      }
+    }
+
+    function onScanSuccess(decodedText, decodedResult) {
+      // Check if the scanned text is a valid URL
+      var url = decodedText.trim().replace(/\/$/, '');
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        document.getElementById('serverInput').value = url;
+        closeQRScanner();
+        // Show loading animation before connecting
+        var card = document.getElementById('setupCard');
+        var spinner = document.getElementById('spinnerWrap');
+        var stext = document.getElementById('stext');
+        card.style.display = 'none';
+        spinner.style.display = 'flex';
+        stext.textContent = 'Connecting to ' + url + '...';
+        // Auto-connect after showing loading
+        setTimeout(function() {
+          doConnect();
+        }, 500);
+      } else {
+        alert("Please scan a valid server URL QR code");
+      }
+    }
+  </script>
+</body>
+</html>

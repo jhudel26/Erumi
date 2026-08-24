@@ -1,0 +1,34 @@
+{
+  "version": "2.1.5",
+  "description": "Terminal anime watcher and downloader powered by Yorumi and mpv.",
+  "homepage": "https://github.com/davenarchives/yorumi-cli",
+  "license": "MIT",
+  "url": "https://github.com/davenarchives/yorumi-cli/archive/refs/tags/v2.1.5.zip",
+  "hash": "autogenerate_upon_release",
+  "extract_dir": "yorumi-cli-2.1.5",
+  "depends": "nodejs",
+  "bin": "yorumi-cli.cmd",
+  "pre_install": [
+    "$node = (Get-Command node).Source",
+    "$launcher = Join-Path $dir 'bin\\yorumi-cli.cjs'",
+    "Set-Content -Path (Join-Path $dir 'yorumi-cli.cmd') -Encoding ASCII -Value ('@echo off' + [Environment]::NewLine + '\"' + $node + '\" \"' + $launcher + '\" %*' + [Environment]::NewLine)"
+  ],
+  "post_install": [
+    "Push-Location $dir",
+    "npm ci --omit=dev --loglevel=error",
+    "if ($LASTEXITCODE -ne 0) { throw 'Failed to install Yorumi CLI dependencies.' }",
+    "Pop-Location"
+  ],
+  "notes": [
+    "Yorumi CLI uses mpv for playback and ffmpeg for downloads.",
+    "Install them with: scoop install mpv ffmpeg",
+    "Run: yorumi-cli --help"
+  ],
+  "checkver": {
+    "github": "https://github.com/davenarchives/yorumi-cli"
+  },
+  "autoupdate": {
+    "url": "https://github.com/davenarchives/yorumi-cli/archive/refs/tags/v$version.zip",
+    "extract_dir": "yorumi-cli-$version"
+  }
+}

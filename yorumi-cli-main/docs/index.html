@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Yorumi CLI</title>
+  <meta name="description" content="Yorumi CLI is the official terminal app for watching and downloading anime from Yorumi." />
+  <link rel="icon" type="image/jpeg" href="./yorumi-icon.jpg" />
+  <script>
+    (() => {
+      const savedTheme = localStorage.getItem('yorumi-cli-theme');
+      const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+      document.documentElement.setAttribute('data-theme', savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : (prefersLight ? 'light' : 'dark'));
+    })();
+  </script>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="Yorumi CLI home">
+      <img class="brand-mark" src="./yorumi-icon.jpg" alt="" />
+      <span>Yorumi CLI</span>
+    </a>
+
+    <nav class="site-nav" aria-label="Primary navigation">
+      <a href="#install">Install</a>
+      <a href="./docs.html">Docs</a>
+      <a href="./docs.html#changelogs">Changelogs</a>
+      <a class="icon-link" href="https://github.com/davenarchives/yorumi-cli" rel="noreferrer" target="_blank" aria-label="Open GitHub repository">
+        <span class="github-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false">
+            <path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02A9.58 9.58 0 0 1 12 6.84c.85 0 1.71.12 2.5.34 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5A10 10 0 0 0 22 12 10 10 0 0 0 12 2z"></path>
+          </svg>
+        </span>
+      </a>
+      <button class="theme-toggle" type="button" role="switch" aria-checked="true" aria-label="Switch to light mode" data-theme-toggle>
+        <span class="theme-icon" aria-hidden="true"></span>
+      </button>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero-section" aria-labelledby="hero-title">
+      <div class="hero-copy">
+
+        <h1 id="hero-title">Watch anime straight from your terminal.</h1>
+        <p class="hero-lede">
+          Search Yorumi, fall back to direct AllAnime scraping, open mpv, or save Windows-friendly MP4 files with one command.
+        </p>
+
+        <dl class="quick-stats" aria-label="Yorumi CLI capabilities">
+          <div>
+            <dt>Playback</dt>
+            <dd>mpv</dd>
+          </div>
+          <div>
+            <dt>Downloads</dt>
+            <dd>MP4 + AAC</dd>
+          </div>
+          <div>
+            <dt>Platforms</dt>
+            <dd>Windows, macOS, Linux</dd>
+          </div>
+        </dl>
+      </div>
+
+      <div class="hero-visual" aria-label="Yorumi CLI watch and download preview">
+        <article class="terminal-window terminal-watch">
+          <div class="window-bar">
+            <div class="window-dots"><span></span><span></span><span></span></div>
+            <span class="window-title">Windows PowerShell</span>
+          </div>
+          <pre><code><span>C:\Users\Yorumi&gt; </span><strong class="term-command">yorumi-cli</strong> <span class="term-flag">-e</span> <span class="term-value">1</span> <span class="term-title">"frieren"</span>
+Searching Yorumi for "frieren"...
+Fetching episodes for Frieren: Beyond Journey's End...
+Resolving playable stream for episode 1...
+Opening Frieren: Beyond Journey's End Episode 1 in mpv (1080p SUB)...
+C:\Users\Yorumi&gt;</code></pre>
+        </article>
+
+        <article class="terminal-window terminal-download">
+          <div class="window-bar">
+            <div class="window-dots"><span></span><span></span><span></span></div>
+            <span class="window-title">Download anime</span>
+          </div>
+          <pre><code><span>C:\Users\Yorumi&gt; </span><strong class="term-command">yorumi-cli</strong> <span class="term-flag">-d</span> <span class="term-flag">-e</span> <span class="term-value">3</span> <span class="term-title">"wistoria"</span>
+Resolving playable stream for episode 3...
+Downloading episode 3 to Downloads\Yorumi\Wistoria - E03.mp4
+[████████████████░░░░░░░░] 66% | Episode 3 | media 0:15:34</code></pre>
+        </article>
+
+        <article class="player-window">
+          <div class="window-bar">
+            <div class="window-dots"><span></span><span></span><span></span></div>
+            <span class="window-title">mpv</span>
+          </div>
+          <div class="player-frame"></div>
+          <div class="player-controls">
+            <span>0:10:06</span>
+            <div class="timeline"><span></span></div>
+            <span>0:24:01</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="install" aria-labelledby="install-title">
+      <div class="section-heading">
+        <p class="eyebrow">Install</p>
+        <h2 id="install-title">Install in one command.</h2>
+        <p>Use the official installer for your platform. Windows installs private Node.js, fzf, mpv, yt-dlp, and ffmpeg when needed.</p>
+      </div>
+
+      <div class="install-panel" data-tabs>
+        <div class="tab-list" role="tablist" aria-label="Install commands">
+          <button class="tab-button active" type="button" data-tab-button="windows">Windows</button>
+          <button class="tab-button" type="button" data-tab-button="unix">macOS / Linux</button>
+        </div>
+        <div class="tab-panel active" data-tab-panel="windows">
+          <pre><code><span class="cmd">iwr -useb https://raw.githubusercontent.com/davenarchives/yorumi-cli/main/install.ps1 | iex</span></code></pre>
+        </div>
+        <div class="tab-panel" data-tab-panel="unix">
+          <pre><code><span class="cmd">curl -sL https://raw.githubusercontent.com/davenarchives/yorumi-cli/main/install.sh | bash</span></code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="section feature-band" id="usage" aria-labelledby="usage-title">
+      <div class="section-heading">
+        <p class="eyebrow">Usage</p>
+        <h2 id="usage-title">Watch or download without leaving the shell.</h2>
+      </div>
+      <div class="feature-grid">
+        <article class="feature-card">
+          <h3>Watch anime</h3>
+          <p>Open an episode in mpv using Yorumi search with direct AllAnime fallback stream resolution.</p>
+          <pre><code><span class="cmd">yorumi-cli -e 1 "frieren"</span>
+<span class="cmd">yorumi-cli -r '1-5' "naruto"</span></code></pre>
+        </article>
+        <article class="feature-card">
+          <h3>Download anime</h3>
+          <p>Save MP4 files to <code>~/Downloads/Yorumi</code>. Audio is converted to AAC by default.</p>
+          <pre><code><span class="cmd">yorumi-cli -d -e 1 "frieren"</span>
+<span class="cmd">yorumi-cli -d -r "1-5" "naruto"</span></code></pre>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="reference" aria-labelledby="reference-title">
+      <div class="section-heading">
+        <p class="eyebrow">Reference</p>
+        <h2 id="reference-title">Command reference.</h2>
+      </div>
+
+      <div class="reference-grid">
+        <article>
+          <h3>Common commands</h3>
+          <pre><code><span class="cmd">yorumi-cli</span>
+<span class="cmd">yorumi-cli "One Piece"</span>
+<span class="cmd">yorumi-cli "Attack on Titan" --sub</span>
+<span class="cmd">yorumi-cli -e 1 "Frieren"</span>
+<span class="cmd">yorumi-cli -e 1 "Attack on Titan" --dub</span>
+<span class="cmd">yorumi-cli -r "1-5" "Naruto"</span>
+<span class="cmd">yorumi-cli -d -e 1 "Frieren"</span>
+<span class="cmd">yorumi-cli --version</span>
+<span class="cmd">yorumi-cli --update</span>
+<span class="cmd">yorumi-cli --uninstall</span></code></pre>
+        </article>
+
+        <article>
+          <h3>Options</h3>
+          <table>
+            <tbody>
+              <tr><th><code>-e, --episode</code></th><td>Select one episode.</td></tr>
+              <tr><th><code>-r, --range</code></th><td>Watch or download an episode range.</td></tr>
+              <tr><th><code>--sub, --dub</code></th><td>Prefer SUBbed or DUBbed audio.</td></tr>
+              <tr><th><code>-d, --download</code></th><td>Download instead of opening mpv.</td></tr>
+              <tr><th><code>-o, --output</code></th><td>Set a download directory.</td></tr>
+              <tr><th><code>-v, --version</code></th><td>Show the installed CLI version.</td></tr>
+
+            </tbody>
+          </table>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="troubleshooting" aria-labelledby="troubleshooting-title">
+      <div class="section-heading">
+        <p class="eyebrow">Support</p>
+        <h2 id="troubleshooting-title">Troubleshooting.</h2>
+      </div>
+      <div class="support-list">
+        <article>
+          <h3>mpv does not open</h3>
+          <p>Run <code>winget install --id shinchiro.mpv -e</code>, reopen the terminal, then run <code>mpv --version</code>.</p>
+        </article>
+        <article>
+          <h3>Fallback streams fail</h3>
+          <p>Run <code>winget install --id yt-dlp.yt-dlp -e</code>, reopen the terminal, then run <code>yt-dlp --version</code>.</p>
+        </article>
+        <article>
+          <h3>Downloads fail</h3>
+          <p>Run <code>yorumi-cli --update</code>. The installer can also install <code>ffmpeg</code> on Windows when needed.</p>
+        </article>
+        <article>
+          <h3>Old command still exists</h3>
+          <p>Run <code>yorumi-cli --uninstall</code>. It removes installer files and known npm command shims.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span>Copyright &copy; 2026 Yorumi CLI</span>
+  </footer>
+
+  <script type="module" src="https://unpkg.com/ionicons@7.4.0/dist/ionicons/ionicons.esm.js"></script>
+  <script nomodule src="https://unpkg.com/ionicons@7.4.0/dist/ionicons/ionicons.js"></script>
+  <script src="./script.js"></script>
+</body>
+</html>
