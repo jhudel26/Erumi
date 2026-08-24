@@ -9,6 +9,8 @@ Erumi — Anime Streaming Platform
 *Search → Select → Stream — right from your desktop or any device on your Wi-Fi.*
 
 </div>
+
+
 ## 🌐 Web Interface
 
 <table>
