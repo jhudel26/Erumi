@@ -1,6 +1,7 @@
 <div align="center">
 
-# <img width="512" height="512" alt="android-chrome-512x512" src="https://github.com/user-attachments/assets/9733733f-dc2c-4ae4-83e9-a13eaf2f8c97" /> 
+# <img width="192" height="192" alt="android-chrome-192x192" src="https://github.com/user-attachments/assets/e8767ecb-47dc-43b6-a241-ef616d248eab" />
+
 Erumi — Anime Streaming Platform
 
 **A modern, self-hosted anime streaming suite powered by the Yorumi CLI engine.**
