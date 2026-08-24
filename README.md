@@ -1,6 +1,7 @@
 <div align="center">
 
-# 🌸 Erumi — Anime Streaming Platform
+# <img width="32" height="32" alt="favicon-32x32" src="https://github.com/user-attachments/assets/903c97b8-e230-496a-94a3-2123cd5eeef0" />
+ Erumi — Anime Streaming Platform
 
 **A modern, self-hosted anime streaming suite powered by the Yorumi CLI engine.**
 
