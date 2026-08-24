@@ -19,7 +19,7 @@ Erumi — Anime Streaming Platform
 | Mode | What it does |
 |---|---|
 | 🖥️ **Desktop GUI** (`Erumi.exe`) | A native Windows dark-theme app. Search anime → pick an episode → plays in **mpv**. |
-| 🌐 **Web Streaming Server** (`ErumiServer.exe`) | A Jellyfin-style local web server. Stream in your **browser** or on any phone/tablet on the same Wi-Fi. |
+| 🌐 **Web Streaming Server** (`ErumiServer.exe`) | A  local web server. Stream in your **browser** or on any phone/tablet on the same Wi-Fi. |
 
 **No account. No subscription. No ads. Just anime.**
 
