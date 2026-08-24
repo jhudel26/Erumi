@@ -1,0 +1,29 @@
+{
+  "server": {
+    "port": 3000,
+    "auto_launch_browser": true,
+    "bind_all_interfaces": true
+  },
+  "playback": {
+    "preferred_quality": "1080p",
+    "auto_next_episode": true,
+    "default_mode": "sub",
+    "buffer_size_kb": 64,
+    "auto_rotate_fullscreen": true
+  },
+  "cache": {
+    "enabled": true,
+    "search_ttl_seconds": 3600,
+    "episodes_ttl_seconds": 600,
+    "metadata_ttl_seconds": 43200
+  },
+  "images": {
+    "sources": [
+      "allanime",
+      "tmdb",
+      "anilist",
+      "jikan"
+    ],
+    "fallback_enabled": true
+  }
+}
