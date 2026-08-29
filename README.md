@@ -56,7 +56,7 @@ It operates in **100% Standalone Mode** without requiring Python, Node.js, or ex
 ## 🗂️ Project Structure
 
 ```
-yorumi anime streaming/
+Erumi anime streaming/
 │
 ├── 📄 main.py                      # Desktop GUI app (plays directly in mpv)
 ├── 📄 web_server.py                # Standalone HTTP Server, HLS Proxy, and Native Scraping Engine
