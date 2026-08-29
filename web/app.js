@@ -6,23 +6,21 @@ console.log('[Erumi] app.js v2.5.1 loaded — Capacitor build support active');
 
 class ErumiApp {
   constructor() {
-    // Detect Capacitor (Android/iOS APK) - multiple checks for reliability
-    const proto = window.location.protocol;
-    const host = window.location.host;
+    // Detect Capacitor (Android/iOS APK) - strictly native container
     const isCapacitor = !!(
-      window.Capacitor ||                       // Capacitor runtime object
-      proto === 'capacitor:' ||                 // capacitor:// scheme
-      (proto === 'http:' && host === 'localhost' && !window._erumiIsServer)  // http://localhost in APK
+      window.Capacitor ||
+      window.location.protocol === 'capacitor:'
     );
     const savedServerUrl = localStorage.getItem('erumi_server_url');
 
     if (isCapacitor && !savedServerUrl) {
-      // Show the server connect onboarding screen, defer full init
+      // Show the server connect onboarding screen on mobile APK if not connected
       this._showServerConnectScreen();
       return;
     }
 
-    // In Capacitor with saved URL, or plain browser → resolve API base
+    // In native Capacitor APK with saved URL, use savedServerUrl.
+    // In any desktop or mobile browser accessing the server, use window.location.origin.
     if (isCapacitor && savedServerUrl) {
       this.apiUrl = savedServerUrl.replace(/\/$/, '');
     } else {
@@ -393,24 +391,12 @@ class ErumiApp {
 
   buildAnimeApiParams(anime, extra = {}) {
     const params = new URLSearchParams({ ...extra });
-    let q = '';
-    let idx = String(anime.index || 1);
-    let mode = anime.mode || 'direct';
+    const q = (anime.title || anime.name || anime.englishName || anime.searchQuery || '').trim();
+    const idx = String(anime.index || 1);
 
-    if (anime.searchQuery && anime.searchQuery.trim()) {
-      q = anime.searchQuery.trim();
-      mode = 'search';
-    } else if (anime.title && anime.title.trim()) {
-      q = anime.title.trim();
-    } else if (anime.name && anime.name.trim()) {
-      q = anime.name.trim();
-    }
-
-    const cleanQ = this.cleanQueryForCli(q);
-
-    params.set('query', cleanQ || q);
+    params.set('query', q);
     params.set('index', idx);
-    params.set('mode', mode);
+    params.set('mode', 'direct');
     return params;
   }
 
@@ -1388,8 +1374,9 @@ class ErumiApp {
       } else {
         ep.unavailable = true;
         this.renderSidebarEpisodeList(this.currentEpisodes);
-        this.videoStatusText.textContent = `Episode ${epNum} is currently unavailable or has not aired yet.`;
-        this.showToast(`Episode ${epNum} is not available from provider.`, 'error');
+        const err = (json && json.error) ? json.error : `Episode ${epNum} is currently unavailable or has not aired yet.`;
+        this.videoStatusText.textContent = err;
+        this.showToast(err, 'error');
       }
     } catch (e) {
       if (this._playRequestId !== playId) return; // stale error from a superseded request
@@ -1502,21 +1489,22 @@ class ErumiApp {
     this.loaderText.textContent = text;
     this.loader.style.display = 'flex';
     this.animeGrid.style.display = 'none';
-    this.errorState.style.display = 'none';
+    if (this.errorState) this.errorState.style.display = 'none';
   }
 
   hideLoader() {
     this.loader.style.display = 'none';
-    this.animeGrid.style.display = 'grid';
   }
 
   showError(msg) {
     this.loader.style.display = 'none';
     this.animeGrid.style.display = 'none';
-    this.errorState.style.display = 'flex';
-    this.errorMessage.textContent = msg;
-    if (this.emptyActions) {
-      this.emptyActions.innerHTML = `<button class="btn btn-primary" onclick="app.retryLastAction()">Retry</button>`;
+    if (this.errorState) {
+      this.errorState.style.display = 'flex';
+      this.errorMessage.textContent = msg;
+      if (this.emptyActions) {
+        this.emptyActions.innerHTML = `<button class="btn btn-primary" onclick="app.loadLatest()">Retry</button>`;
+      }
     }
   }
 
@@ -1703,12 +1691,13 @@ class ErumiApp {
     try {
       const res = await fetch(`${this.apiUrl}/api/latest?limit=18`);
       const json = await res.json();
-      if (json.success && json.data && json.data.results) {
+      if (json.success && json.data && json.data.results && json.data.results.length > 0) {
         this.currentAnimeList = json.data.results.slice(0, 18);
         this.renderAnimeGrid(this.currentAnimeList, { mode: 'latest' });
         this.render3DCarousel(this.currentAnimeList);
+        this.animeGrid.style.display = 'grid';
       } else {
-        this.showError(json.error || 'Failed to load latest anime.');
+        this.showError(json.error || 'Failed to load latest anime. Please check your network connection.');
       }
     } catch (e) {
       this.showError(`Connection error: ${e.message}`);

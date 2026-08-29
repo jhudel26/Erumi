@@ -1,5 +1,5 @@
-const CACHE_NAME = 'erumi-pwa-v10';
-const METADATA_CACHE = 'erumi-metadata-v2';
+const CACHE_NAME = 'erumi-pwa-v11';
+const METADATA_CACHE = 'erumi-metadata-v3';
 const OFFLINE_PAGE = '/offline.html';
 
 const ASSETS = [
@@ -30,7 +30,6 @@ self.addEventListener('install', (event) => {
         await cache.addAll(ASSETS);
       } catch (error) {
         console.warn('[Erumi SW] Some assets failed to cache:', error);
-        // Continue with what we have
       }
     })
   );
@@ -56,58 +55,21 @@ self.addEventListener('activate', (event) => {
 
 // Fetch event - intelligent caching strategy
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-  
-  // ============================================
-  // 1. CACHE METADATA API (1 hour TTL)
-  // ============================================
-  if (url.pathname === '/api/metadata') {
-    event.respondWith(
-      caches.open(METADATA_CACHE).then(async (cache) => {
-        const cached = await cache.match(event.request);
-        
-        // Check if cached response is still fresh (1 hour)
-        if (cached) {
-          const cachedTime = cached.headers.get('sw-cache-time');
-          if (cachedTime && Date.now() - parseInt(cachedTime) < 3600000) {
-            return cached;
-          }
-        }
-        
-        // Fetch fresh data
-        try {
-          const response = await fetch(event.request);
-          if (response.ok) {
-            // Clone before modifying to avoid body locked error
-            const responseToCache = response.clone();
-            const headers = new Headers(responseToCache.headers);
-            headers.set('sw-cache-time', Date.now().toString());
-            const newResponse = new Response(responseToCache.body, { headers });
-            cache.put(event.request, newResponse);
-            return response;
-          }
-          return response;
-        } catch (error) {
-          // If offline and have cached data, return it even if expired
-          if (cached) {
-            return cached;
-          }
-          // Return empty JSON as fallback
-          return new Response(JSON.stringify({ success: false, data: null }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-      })
-    );
+  // Only intercept GET requests - NEVER touch POST, PUT, DELETE, OPTIONS
+  if (event.request.method !== 'GET') {
     return;
   }
-  
-  // ============================================
-  // 2. SKIP OTHER API CALLS
-  // ============================================
-  if (url.pathname.startsWith('/api/')) {
-    // For other API calls, just pass through
+
+  const url = new URL(event.request.url);
+
+  // Skip all API routes, video proxy streams, HLS playlists/segments, and external GraphQL
+  if (
+    url.pathname.startsWith('/api/') ||
+    url.hostname.includes('graphql') ||
+    url.pathname.endsWith('.m3u8') ||
+    url.pathname.endsWith('.ts') ||
+    url.pathname.includes('/stream')
+  ) {
     return;
   }
   

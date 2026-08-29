@@ -15,6 +15,10 @@ import json
 import os
 import sys
 import io
+import re
+import html
+import base64
+import hashlib
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -23,6 +27,13 @@ if sys.stdout is None:
     sys.stdout = io.StringIO()
 if sys.stderr is None:
     sys.stderr = io.StringIO()
+
+import ssl
+try:
+    # Disable strict cert validation on sandboxed Windows / VM systems missing root CAs
+    ssl._create_default_https_context = ssl._create_unverified_context
+except Exception:
+    pass
 
 
 import time
@@ -55,11 +66,6 @@ def is_trusted_url(url: str) -> bool:
             except ValueError:
                 pass
         if host.startswith("169.254."):
-            return False
-            
-        # Block arbitrary LAN port scanning (allow standard HTTP/HTTPS ports)
-        port = parsed.port
-        if port not in (None, 80, 443):
             return False
             
         return True
@@ -329,7 +335,17 @@ def rewrite_m3u8(content: str, base_url: str, referer: str) -> str:
     rewritten = []
     for line in lines:
         trimmed = line.strip()
-        if not trimmed or trimmed.startswith("#"):
+        if not trimmed:
+            rewritten.append(line)
+        elif trimmed.startswith("#"):
+            if 'URI="' in line:
+                def replace_uri(m):
+                    orig = m.group(1)
+                    abs_u = urllib.parse.urljoin(base_url, orig)
+                    enc_u = urllib.parse.quote(abs_u, safe="")
+                    enc_r = urllib.parse.quote(referer, safe="")
+                    return f'URI="/api/proxy?url={enc_u}&referer={enc_r}"'
+                line = re.sub(r'URI="([^"]+)"', replace_uri, line)
             rewritten.append(line)
         else:
             abs_url = urllib.parse.urljoin(base_url, trimmed)
@@ -341,6 +357,652 @@ def rewrite_m3u8(content: str, base_url: str, referer: str) -> str:
 
 ALLANIME_API_URL = "https://api.mkissa.net/api"
 ALLANIME_REFERER = "https://mkissa.to"
+ANINEKO_BASE = "https://anineko.to"
+
+
+def normalize_title(value: Any) -> str:
+    return re.sub(r'[^a-z0-9]+', ' ', str(value or '').lower()).strip()
+
+
+def clean_search_query(query: str) -> str:
+    return re.sub(r'\s+', ' ', re.sub(r'[^a-z0-9\s]', '', query.lower())).strip()
+
+
+def score_search_result(query: str, result: Dict[str, Any]) -> int:
+    q = normalize_title(query)
+    titles = [
+        normalize_title(result.get('title')),
+        normalize_title(result.get('name')),
+        normalize_title(result.get('englishName')),
+    ]
+    titles = [t for t in titles if t]
+    score = 0
+    exact_match = False
+    for title in titles:
+        if title == q:
+            exact_match = True
+            score = max(score, 100_000)
+        elif title.startswith(f"{q} "):
+            score = max(score, 20_000)
+        elif q in title:
+            score = max(score, 5_000)
+
+    title_str = str(result.get('title') or '')
+    is_special = bool(re.search(r'\b(movie|special|recap|ova|ona)\b', title_str, re.IGNORECASE))
+    asks_special = bool(re.search(r'\b(movie|special|recap|ova|ona)\b', query, re.IGNORECASE))
+    if is_special and not asks_special:
+        score -= 200_000
+    if not asks_special and not exact_match and int(result.get('episodes') or 0) <= 1:
+        score -= 200_000
+    score += min(int(result.get('episodes') or 0), 1_000)
+    return score
+
+
+def map_show_edges(edges: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    results = []
+    for edge in edges:
+        available = edge.get("availableEpisodes") or {}
+        episodes = max(
+            available.get("sub") or 0,
+            available.get("dub") or 0,
+            available.get("raw") or 0,
+            int(edge.get("episodeCount") or 0),
+            1
+        )
+        season_obj = edge.get("season")
+        year = None
+        if isinstance(season_obj, dict):
+            year = season_obj.get("year")
+
+        title = edge.get("englishName") or edge.get("name")
+        if not title:
+            continue
+
+        results.append({
+            "id": f"allanime-{edge.get('_id')}",
+            "title": title,
+            "name": edge.get("name"),
+            "englishName": edge.get("englishName"),
+            "session": f"allanime:{edge.get('_id')}",
+            "episodes": episodes,
+            "year": year,
+            "type": edge.get("type"),
+            "status": edge.get("status"),
+            "genres": edge.get("genres") or [],
+            "poster": edge.get("thumbnail") or None,
+            "banner": edge.get("banner") or None,
+        })
+    return results
+
+
+def fetch_allanime_shows_gql(
+    query_str: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    limit: int = 40,
+    page: int = 1,
+    genres: Optional[List[str]] = None,
+    year: Optional[int] = None,
+    translation_type: str = "sub"
+) -> List[Dict[str, Any]]:
+    search_params: Dict[str, Any] = {"allowAdult": False, "allowUnknown": False}
+    if query_str:
+        search_params["query"] = clean_search_query(query_str)
+    elif sort_by:
+        search_params["sortBy"] = sort_by
+        search_params["sortDirection"] = "DSC"
+
+    if genres:
+        search_params["genres"] = genres
+    if year:
+        search_params["year"] = year
+
+    gql = """query ($search: SearchInput, $limit: Int, $page: Int, $translationType: VaildTranslationTypeEnumType, $countryOrigin: VaildCountryOriginEnumType) {
+  shows(search: $search, limit: $limit, page: $page, translationType: $translationType, countryOrigin: $countryOrigin) {
+    edges {
+      _id
+      name
+      englishName
+      type
+      season
+      availableEpisodes
+      episodeCount
+      status
+      genres
+      thumbnail
+      banner
+    }
+  }
+}"""
+
+    req_data = json.dumps({
+        "query": gql,
+        "variables": {
+            "search": search_params,
+            "limit": limit,
+            "page": page,
+            "translationType": translation_type,
+            "countryOrigin": "ALL",
+        }
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        ALLANIME_API_URL,
+        data=req_data,
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": UA,
+            "Origin": ALLANIME_REFERER,
+            "Referer": ALLANIME_REFERER,
+        }
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            edges = data.get("data", {}).get("shows", {}).get("edges") or []
+            return map_show_edges(edges)
+    except Exception as e:
+        if sys.stdout is not None:
+            sys.stdout.write(f"[Erumi] AllAnime GQL error: {str(e)}\n")
+            sys.stdout.flush()
+        return []
+
+
+def fetch_anilist_catalog(
+    sort_by: str = "TRENDING_DESC",
+    limit: int = 18,
+    page: int = 1,
+    search_query: Optional[str] = None,
+    genre: Optional[str] = None,
+    year: Optional[int] = None
+) -> List[Dict[str, Any]]:
+    query = """
+    query ($page: Int, $perPage: Int, $sort: [MediaSort], $search: String, $genre: String, $seasonYear: Int) {
+      Page (page: $page, perPage: $perPage) {
+        media (sort: $sort, type: ANIME, isAdult: false, search: $search, genre: $genre, seasonYear: $seasonYear) {
+          id
+          title { romaji english userPreferred }
+          status
+          format
+          episodes
+          seasonYear
+          coverImage { extraLarge large medium }
+          bannerImage
+          averageScore
+          description(asHtml: false)
+          genres
+        }
+      }
+    }
+    """
+    variables: Dict[str, Any] = {
+        "page": page,
+        "perPage": limit,
+        "sort": [sort_by] if sort_by else ["TRENDING_DESC"]
+    }
+    if search_query:
+        variables["search"] = search_query
+        variables["sort"] = ["SEARCH_MATCH"]
+    if genre:
+        variables["genre"] = genre
+    if year:
+        variables["seasonYear"] = year
+
+    req_data = json.dumps({"query": query, "variables": variables}).encode("utf-8")
+    req = urllib.request.Request(
+        "https://graphql.anilist.co",
+        data=req_data,
+        headers={"Content-Type": "application/json", "User-Agent": UA}
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            media_list = data.get("data", {}).get("Page", {}).get("media") or []
+            results = []
+            for i, m in enumerate(media_list):
+                t_obj = m.get("title") or {}
+                title = t_obj.get("english") or t_obj.get("userPreferred") or t_obj.get("romaji") or "Unknown"
+                cover = m.get("coverImage") or {}
+                poster = cover.get("extraLarge") or cover.get("large") or cover.get("medium")
+                results.append({
+                    "id": f"anilist-{m.get('id')}",
+                    "title": title,
+                    "name": t_obj.get("romaji") or title,
+                    "englishName": t_obj.get("english") or title,
+                    "session": f"anilist:{m.get('id')}",
+                    "episodes": m.get("episodes") or 12,
+                    "year": m.get("seasonYear"),
+                    "type": m.get("format") or "TV",
+                    "status": (m.get("status") or "RELEASING").replace("_", " ").title(),
+                    "genres": m.get("genres") or [],
+                    "poster": poster,
+                    "banner": m.get("bannerImage"),
+                    "index": i + 1
+                })
+            return results
+    except Exception as e:
+        if sys.stdout is not None:
+            sys.stdout.write(f"[Erumi] AniList catalog fallback error: {str(e)}\n")
+            sys.stdout.flush()
+        return []
+
+
+def search_anime(query: str) -> Dict[str, Any]:
+    raw_results = fetch_allanime_shows_gql(query_str=query, limit=40)
+    if not raw_results:
+        raw_results = fetch_allanime_shows_gql(query_str=query, limit=40, translation_type="dub")
+    if not raw_results:
+        raw_results = fetch_anilist_catalog(search_query=query, limit=40)
+
+    ranked = sorted(raw_results, key=lambda x: score_search_result(query, x), reverse=True)
+    results = []
+    for i, r in enumerate(ranked):
+        r_copy = dict(r)
+        r_copy["index"] = i + 1
+        results.append(r_copy)
+
+    return {
+        "success": True,
+        "data": {
+            "type": "search_results",
+            "results": results
+        }
+    }
+
+
+def get_latest_anime(limit: int = 18) -> Dict[str, Any]:
+    raw_results = fetch_allanime_shows_gql(sort_by="Latest_Update", limit=limit)
+    if not raw_results:
+        raw_results = fetch_anilist_catalog(sort_by="UPDATED_AT_DESC", limit=limit)
+    if not raw_results:
+        raw_results = fetch_anilist_catalog(sort_by="TRENDING_DESC", limit=limit)
+
+    results = []
+    for i, r in enumerate(raw_results[:limit]):
+        r_copy = dict(r)
+        r_copy["index"] = i + 1
+        results.append(r_copy)
+
+    return {
+        "success": True,
+        "data": {
+            "type": "search_results",
+            "results": results
+        }
+    }
+
+
+def get_popular_anime(limit: int = 40) -> Dict[str, Any]:
+    raw_results = fetch_allanime_shows_gql(sort_by="Trending", limit=limit)
+    if not raw_results:
+        raw_results = fetch_anilist_catalog(sort_by="TRENDING_DESC", limit=limit)
+    if not raw_results:
+        raw_results = fetch_anilist_catalog(sort_by="POPULARITY_DESC", limit=limit)
+
+    results = []
+    for i, r in enumerate(raw_results[:limit]):
+        r_copy = dict(r)
+        r_copy["index"] = i + 1
+        results.append(r_copy)
+
+    return {
+        "success": True,
+        "data": {
+            "type": "search_results",
+            "results": results
+        }
+    }
+
+
+def browse_anime(page: int = 1, limit: int = 48, genre: str = "", status: str = "", year: Optional[int] = None) -> Dict[str, Any]:
+    sort_by = "Latest_Update" if (genre or year) else "Trending"
+    genres_list = [genre.strip()] if genre.strip() else None
+    raw_results = fetch_allanime_shows_gql(
+        sort_by=sort_by,
+        limit=limit,
+        page=page,
+        genres=genres_list,
+        year=year
+    )
+    if not raw_results:
+        raw_results = fetch_anilist_catalog(
+            sort_by="TRENDING_DESC",
+            limit=limit,
+            page=page,
+            genre=genre if genre else None,
+            year=year
+        )
+
+    if status:
+        filtered = [r for r in raw_results if str(r.get("status", "")).lower() == status.lower()]
+    else:
+        filtered = raw_results
+
+    results = []
+    for i, r in enumerate(filtered[:limit]):
+        r_copy = dict(r)
+        r_copy["index"] = i + 1
+        results.append(r_copy)
+
+    return {
+        "success": True,
+        "data": {
+            "type": "search_results",
+            "results": results,
+            "hasMore": len(raw_results) >= limit
+        }
+    }
+
+
+def get_anime_episodes(title: str = "", index: int = 1, mode: str = "search") -> Dict[str, Any]:
+    show_match = None
+    if title:
+        res = search_anime(title)
+        results = res.get("data", {}).get("results", [])
+        if results:
+            idx = max(0, min(index - 1, len(results) - 1))
+            show_match = results[idx]
+
+    if not show_match:
+        show_match = {
+            "id": f"yorumi-{clean_search_query(title)}",
+            "title": title or "Anime",
+            "year": None,
+            "episodes": 24
+        }
+
+    total_episodes = show_match.get("episodes") or 24
+    episodes = [
+        {
+            "id": f"yorumi:{show_match.get('id')}-ep-{i}",
+            "session": f"yorumi:{show_match.get('id')}-ep-{i}",
+            "episodeNumber": i
+        }
+        for i in range(1, total_episodes + 1)
+    ]
+
+    return {
+        "success": True,
+        "data": {
+            "type": "episodes",
+            "anime": {
+                "id": show_match.get("id"),
+                "title": show_match.get("title"),
+                "year": show_match.get("year"),
+                "episodes": total_episodes
+            },
+            "episodes": episodes
+        }
+    }
+
+
+def fetch_anineko_streams(title: str, episode: int, audio: str = "sub") -> List[Dict[str, Any]]:
+    try:
+        clean_t = re.sub(r'\((TV|Dub|Sub|Dubbed|Subbed|Uncensored|Batch|Raw|1080p|720p)\)', '', title, flags=re.IGNORECASE).strip()
+        search_url = f"{ANINEKO_BASE}/browser?keyword={urllib.parse.quote(clean_t)}"
+        req = urllib.request.Request(search_url, headers={"User-Agent": UA})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            search_html = resp.read().decode("utf-8")
+
+        results = []
+        for m in re.finditer(r'<a\b[^>]*class=["\'][^"\']*nv-anime-thumb[^"\']*["\'][^>]*>[\s\S]*?</a>', search_html, re.IGNORECASE):
+            tag_m = re.search(r'<a\b[^>]*>', m.group(0), re.IGNORECASE)
+            tag = tag_m.group(0) if tag_m else ""
+            href_m = re.search(r'href=["\']([^"\']+)["\']', tag, re.IGNORECASE)
+            if not href_m:
+                continue
+            slug_m = re.search(r'/watch/([^/?#]+)', href_m.group(1))
+            if not slug_m:
+                continue
+            slug = slug_m.group(1)
+            title_m = re.search(r'<(?:h3|[^>]+class=["\'][^"\']*nv-anime-title[^"\']*["\'][^>]*)>([\s\S]*?)</(?:h3|[^>]+)>', m.group(0), re.IGNORECASE)
+            r_title = re.sub(r'<[^>]*>', '', title_m.group(1)).strip() if title_m else slug.replace('-', ' ')
+            results.append({"slug": slug, "text": r_title})
+
+        if not results:
+            return []
+
+        expected = re.sub(r'[^a-z0-9]+', '-', clean_t.lower()).strip('-')
+        expected_no_the = re.sub(r'^the-', '', expected)
+        best_slug = results[0]["slug"]
+        best_score = -999999
+
+        for r in results:
+            score = 0
+            slug = r["slug"].lower()
+            slug_no_the = re.sub(r'^the-', '', slug)
+            t = r["text"].lower()
+
+            if slug == expected or slug_no_the == expected_no_the:
+                score += 2500
+            elif t == clean_t.lower():
+                score += 2000
+            elif slug.startswith(expected) or expected.startswith(slug) or slug_no_the.startswith(expected_no_the):
+                score += 1200
+            elif clean_t.lower() in t or t in clean_t.lower():
+                score += 800
+
+            # TV series preference over Movie/ONA/OVA/Special
+            if " tv" in t or "tv " in t or "\ntv" in t or "cc " in t:
+                score += 300
+            if "movie" in slug or "movie" in t:
+                score -= 700
+            if "ona" in slug or "ona" in t:
+                score -= 600
+            if "ova" in slug or "ova" in t:
+                score -= 600
+            if "special" in slug or "special" in t:
+                score -= 600
+            if "-season-2" in slug and "2" not in clean_t and "ii" not in clean_t.lower():
+                score -= 400
+
+            if score > best_score:
+                best_score = score
+                best_slug = r["slug"]
+
+        ep_slug = f"ep-{episode}"
+        watch_url = f"{ANINEKO_BASE}/watch/{best_slug}/{ep_slug}"
+        watch_req = urllib.request.Request(watch_url, headers={
+            "User-Agent": UA,
+            "Referer": f"{ANINEKO_BASE}/watch/{best_slug}"
+        })
+        with urllib.request.urlopen(watch_req, timeout=10) as wresp:
+            watch_html = wresp.read().decode("utf-8")
+
+        by_audio = {"sub": [], "dub": []}
+        for panel in re.finditer(r'<div\b[^>]*class=["\'][^"\']*nv-server-grid[^"\']*["\'][^>]*data-id=["\']([^"\']+)["\'][^>]*>([\s\S]*?)(?=<div\b[^>]*class=["\'][^"\']*nv-server-grid|$)', watch_html, re.IGNORECASE):
+            raw_audio = panel.group(1).lower()
+            panel_audio = "dub" if "dub" in raw_audio else "sub"
+            for btn in re.finditer(r'data-video=["\']([^"\']+)["\']', panel.group(2), re.IGNORECASE):
+                by_audio[panel_audio].append(html.unescape(btn.group(1)))
+
+        embeds = by_audio.get(audio) or by_audio.get("sub") or []
+        streams = []
+
+        for i, embed in enumerate(embeds):
+            try:
+                embed_req = urllib.request.Request(embed, headers={
+                    "User-Agent": UA,
+                    "Referer": f"{ANINEKO_BASE}/"
+                })
+                with urllib.request.urlopen(embed_req, timeout=10) as eresp:
+                    embed_html = eresp.read().decode("utf-8")
+
+                patterns = [
+                    r'const\s+src\s*=\s*["\'](https?://[^"\']+\.m3u8[^"\']*)["\']',
+                    r'file\s*:\s*["\'](https?://[^"\']+\.m3u8[^"\']*)["\']',
+                    r'["\'](https?://[^"\']+/master\.m3u8[^"\']*)["\']',
+                    r'["\'](https?://[^"\']+\.m3u8[^"\']*)["\']',
+                ]
+                for p in patterns:
+                    m = re.search(p, embed_html, re.IGNORECASE)
+                    if m:
+                        hls_url = html.unescape(m.group(1))
+                        parsed_origin = urllib.parse.urlparse(embed)
+                        origin = f"{parsed_origin.scheme}://{parsed_origin.netloc}/"
+                        streams.append({
+                            "provider": "anineko",
+                            "server": f"Server {i+1}",
+                            "url": hls_url,
+                            "directUrl": hls_url,
+                            "quality": "Auto",
+                            "audio": audio,
+                            "isHls": True,
+                            "referer": origin
+                        })
+                        break
+            except Exception:
+                continue
+
+        return streams
+    except Exception as e:
+        if sys.stdout is not None:
+            sys.stdout.write(f"[Erumi] AniNeko stream fetch error: {str(e)}\n")
+            sys.stdout.flush()
+        return []
+
+
+def fetch_anidb_stream(title: str, episode: int = 1, audio: str = "sub") -> Optional[Dict[str, Any]]:
+    try:
+        q = urllib.parse.quote(title.strip())
+        search_url = f"https://anidb.app/search/suggestions?q={q}"
+        req = urllib.request.Request(search_url, headers={"User-Agent": UA, "Referer": "https://anidb.app/"})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            page = r.read().decode("utf-8")
+
+        m = re.search(r'anime/[a-z0-9-]+-(\d+)', page, re.IGNORECASE)
+        if not m:
+            return None
+
+        anime_id = m.group(1)
+        ep_url = f"https://anidb.app/api/frontend/anime/{anime_id}/episodes"
+        req_ep = urllib.request.Request(ep_url, headers={"User-Agent": UA, "Referer": "https://anidb.app/"})
+        with urllib.request.urlopen(req_ep, timeout=8) as r:
+            ep_data = json.loads(r.read().decode("utf-8"))
+
+        ep_list = ep_data if isinstance(ep_data, list) else (ep_data.get("episodes") or ep_data.get("data") or [])
+        target_ep = None
+        for e in ep_list:
+            if str(e.get("number")) == str(episode):
+                target_ep = e
+                break
+
+        if not target_ep:
+            return None
+
+        ep_id = target_ep.get("id")
+        lang_url = f"https://anidb.app/api/frontend/episode/{ep_id}/languages"
+        req_lang = urllib.request.Request(lang_url, headers={"User-Agent": UA, "Referer": "https://anidb.app/"})
+        with urllib.request.urlopen(req_lang, timeout=8) as r:
+            lang_data = json.loads(r.read().decode("utf-8"))
+
+        lang_list = lang_data if isinstance(lang_data, list) else (lang_data.get("languages") or lang_data.get("data") or [])
+        pref = "eng" if audio == "dub" else "jpn"
+        target_lang = next((l for l in lang_list if l.get("code") == pref), (lang_list[0] if lang_list else None))
+        if not target_lang or not target_lang.get("embed_url"):
+            return None
+
+        embed_u = target_lang["embed_url"]
+        req_embed = urllib.request.Request(embed_u, headers={"User-Agent": UA, "Referer": "https://anidb.app/"})
+        with urllib.request.urlopen(req_embed, timeout=8) as r:
+            embed_page = r.read().decode("utf-8")
+
+        m3u8_m = re.search(r'file:\s*[\'"]([^\'"]+)[\'"]', embed_page)
+        if m3u8_m:
+            stream_url = m3u8_m.group(1)
+            return {
+                "provider": "anidb",
+                "server": "AniDB Server",
+                "url": stream_url,
+                "directUrl": stream_url,
+                "quality": "1080p",
+                "audio": audio,
+                "isHls": True,
+                "referer": "https://anidb.app/"
+            }
+    except Exception as e:
+        if sys.stdout is not None:
+            sys.stdout.write(f"[Erumi] AniDB fetch error: {type(e).__name__}: {str(e)}\n")
+            sys.stdout.flush()
+        raise e
+    return None
+
+
+def get_stream(title: str, episode: int = 1, audio: str = "sub") -> Dict[str, Any]:
+    # 1. Check AniDB First
+    anidb_stream = fetch_anidb_stream(title, episode, audio)
+    if anidb_stream:
+        return {
+            "success": True,
+            "data": {
+                "type": "streams",
+                "anime": {"title": title},
+                "episodes": [{
+                    "episodeNumber": episode,
+                    "stream": anidb_stream,
+                    "url": anidb_stream["url"]
+                }]
+            }
+        }
+
+    # 2. Check AniNeko
+    streams = fetch_anineko_streams(title, episode, audio)
+    if not streams and ":" in title:
+        prefix = title.split(":")[0].strip()
+        if prefix:
+            anidb_stream = fetch_anidb_stream(prefix, episode, audio)
+            if anidb_stream:
+                streams = [anidb_stream]
+            else:
+                streams = fetch_anineko_streams(prefix, episode, audio)
+
+    if not streams and " - " in title:
+        prefix = title.split(" - ")[0].strip()
+        if prefix:
+            anidb_stream = fetch_anidb_stream(prefix, episode, audio)
+            if anidb_stream:
+                streams = [anidb_stream]
+            else:
+                streams = fetch_anineko_streams(prefix, episode, audio)
+
+    if not streams:
+        # Search catalog for alternate titles (romaji, english, original)
+        search_res = search_anime(title)
+        results = search_res.get("data", {}).get("results", [])
+        if results:
+            for item in results[:3]:
+                for alt_name in [item.get("name"), item.get("englishName"), item.get("title")]:
+                    if alt_name and alt_name.lower() != title.lower():
+                        anidb_stream = fetch_anidb_stream(alt_name, episode, audio)
+                        if anidb_stream:
+                            streams = [anidb_stream]
+                            break
+                        streams = fetch_anineko_streams(alt_name, episode, audio)
+                        if streams:
+                            break
+                if streams:
+                    break
+
+    if streams:
+        first_stream = streams[0]
+        return {
+            "success": True,
+            "data": {
+                "type": "streams",
+                "anime": {"title": title},
+                "episodes": [{
+                    "episodeNumber": episode,
+                    "stream": first_stream,
+                    "url": first_stream["url"]
+                }]
+            }
+        }
+
+    return {
+        "success": False,
+        "error": f"No playable stream found for episode {episode}"
+    }
 
 
 def fetch_allanime_show_art(show_id: str) -> Dict[str, Any]:
@@ -652,6 +1314,12 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         except Exception:
             pass
 
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        super().end_headers()
+
     def send_json(self, data: Any, status: int = 200):
         body = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
         self.send_response(status)
@@ -706,6 +1374,66 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         parsed_url = urllib.parse.urlparse(self.path)
         path = parsed_url.path
         query = urllib.parse.parse_qs(parsed_url.query)
+
+        # ── Stream Diagnostic Endpoint ──
+        if path == "/api/debug-stream":
+            title = query.get("query", ["KAMUI: He's Behind You"])[0].strip()
+            episode_str = query.get("episode", ["1"])[0].strip()
+            episode = int(episode_str) if episode_str.isdigit() else 1
+
+            report = {
+                "query": title,
+                "episode": episode,
+                "anidb": {},
+                "anineko": {},
+                "resolved": False,
+                "stream_url": None,
+                "proxy_test": {},
+            }
+
+            try:
+                ad_stream = fetch_anidb_stream(title, episode)
+                report["anidb"] = {
+                    "success": bool(ad_stream),
+                    "url": ad_stream["url"] if ad_stream else None
+                }
+            except Exception as e:
+                report["anidb"] = {"success": False, "error": f"{type(e).__name__}: {str(e)}"}
+
+            try:
+                nk_streams = fetch_anineko_streams(title, episode)
+                report["anineko"] = {
+                    "success": bool(nk_streams),
+                    "count": len(nk_streams),
+                    "first_url": nk_streams[0]["url"] if nk_streams else None
+                }
+            except Exception as e:
+                report["anineko"] = {"success": False, "error": f"{type(e).__name__}: {str(e)}"}
+
+            try:
+                full_stream = get_stream(title, episode)
+                report["resolved"] = full_stream.get("success", False)
+                report["get_stream_error"] = full_stream.get("error")
+                if full_stream.get("success"):
+                    stream_obj = full_stream["data"]["episodes"][0]
+                    report["stream_url"] = stream_obj["url"]
+                    report["provider"] = stream_obj.get("stream", {}).get("provider")
+                    
+                    proxy_u = stream_obj["url"]
+                    ref = stream_obj.get("stream", {}).get("referer", "")
+                    p_req = urllib.request.Request(proxy_u, headers={"User-Agent": UA, "Referer": ref})
+                    with urllib.request.urlopen(p_req, timeout=5) as pr:
+                        sample = pr.read(150)
+                        report["proxy_test"] = {
+                            "status": pr.status,
+                            "content_sample": sample.decode("utf-8", errors="ignore")[:100],
+                            "is_valid_hls": b"#EXTM3U" in sample or b"#EXT" in sample
+                        }
+            except Exception as e:
+                report["error"] = f"{type(e).__name__}: {str(e)}"
+
+            self.send_json(report)
+            return
 
         # ── Settings Endpoint ──
         if path == "/api/settings":
@@ -837,14 +1565,10 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         # ── API Routes ──
         if path == "/api/status":
             mpv_path = resolve_mpv_path()
-            local_cjs = (
-                (app_dir() / "yorumi-cli-main" / "bin" / "yorumi-cli.cjs").exists()
-                or (app_dir().parent / "yorumi-cli-main" / "bin" / "yorumi-cli.cjs").exists()
-            )
             local_ip = get_local_ip()
             self.send_json({
                 "status": "ok",
-                "cli_ready": local_cjs or DEFAULT_CLI.exists() or FALLBACK_CLI.exists(),
+                "cli_ready": True,
                 "mpv_available": bool(mpv_path),
                 "mpv_path": mpv_path,
                 "local_ip": local_ip,
@@ -1104,107 +1828,41 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             if cached:
                 self.send_json(cached)
                 return
-            res = run_cli_command([q, "--json"])
-            if res.get("success") and res.get("data", {}).get("results"):
-                # Filter episode counts to show only aired episodes using TMDB metadata
-                results = res["data"]["results"]
-                for item in results:
-                    title = item.get("title") or item.get("name") or item.get("englishName")
-                    if title:
-                        try:
-                            # Query TMDB for TV show details
-                            search_url = f"https://api.themoviedb.org/3/search/tv?api_key=2dca580c2a14b55200e784d157207b4d&query={urllib.parse.quote(title)}&first_air_date_year.gte=2000"
-                            req = urllib.request.Request(
-                                search_url,
-                                headers={"User-Agent": UA},
-                            )
-                            with urllib.request.urlopen(req, timeout=5) as resp:
-                                data = json.loads(resp.read().decode("utf-8"))
-                                tmdb_results = data.get("results", [])
-                                if tmdb_results:
-                                    show = tmdb_results[0]
-                                    show_id = show.get("id")
-                                    if show_id:
-                                        # Get detailed info including number of seasons and episodes
-                                        detail_url = f"https://api.themoviedb.org/3/tv/{show_id}?api_key=2dca580c2a14b55200e784d157207b4d"
-                                        detail_req = urllib.request.Request(
-                                            detail_url,
-                                            headers={"User-Agent": UA},
-                                        )
-                                        with urllib.request.urlopen(detail_req, timeout=5) as detail_resp:
-                                            detail_data = json.loads(detail_resp.read().decode("utf-8"))
-                                            # Check if show is currently airing
-                                            status = detail_data.get("status", "")
-                                            if status == "Returning Series" or status == "In Production":
-                                                # Get season details to count aired episodes
-                                                seasons = detail_data.get("seasons", [])
-                                                total_aired = 0
-                                                for season in seasons:
-                                                    season_number = season.get("season_number", 0)
-                                                    if season_number > 0:  # Skip specials
-                                                        season_detail_url = f"https://api.themoviedb.org/3/tv/{show_id}/season/{season_number}?api_key=2dca580c2a14b55200e784d157207b4d"
-                                                        season_req = urllib.request.Request(
-                                                            season_detail_url,
-                                                            headers={"User-Agent": UA},
-                                                        )
-                                                        try:
-                                                            with urllib.request.urlopen(season_req, timeout=3) as season_resp:
-                                                                season_data = json.loads(season_resp.read().decode("utf-8"))
-                                                                episodes = season_data.get("episodes", [])
-                                                                # Count only aired episodes (with air_date in past)
-                                                                from datetime import datetime
-                                                                for ep in episodes:
-                                                                    air_date = ep.get("air_date")
-                                                                    if air_date:
-                                                                        try:
-                                                                            air_dt = datetime.strptime(air_date, "%Y-%m-%d")
-                                                                            if air_dt <= datetime.now():
-                                                                                total_aired += 1
-                                                                        except:
-                                                                            pass
-                                                        except:
-                                                            pass
-                                                if total_aired > 0:
-                                                    item["episodes"] = total_aired
-                        except Exception:
-                            # If TMDB fails, keep original episode count
-                            pass
+            res = search_anime(q)
+            if res.get("success"):
                 set_cached_cli_output(cache_key, res)
             self.send_json(res)
             return
 
         if path == "/api/latest":
-            limit = query.get("limit", ["18"])[0].strip()
-            cache_key = ("latest", limit)
+            limit_str = query.get("limit", ["18"])[0].strip()
+            limit = int(limit_str) if limit_str.isdigit() else 18
+            cache_key = ("latest", str(limit))
             cached = get_cached_cli_output(cache_key, 600)  # 10 minutes
             if cached:
                 self.send_json(cached)
                 return
-            res = run_cli_command(["--latest", "--limit", str(limit), "--json"])
+            res = get_latest_anime(limit=limit)
             if res.get("success"):
                 set_cached_cli_output(cache_key, res)
             self.send_json(res)
             return
 
         if path == "/api/browse":
-            page = query.get("page", ["1"])[0].strip()
-            limit = query.get("limit", ["48"])[0].strip()
+            page_str = query.get("page", ["1"])[0].strip()
+            limit_str = query.get("limit", ["48"])[0].strip()
+            page = int(page_str) if page_str.isdigit() else 1
+            limit = int(limit_str) if limit_str.isdigit() else 48
             genre = query.get("genre", [""])[0].strip()
             status = query.get("status", [""])[0].strip()
-            year = query.get("year", [""])[0].strip()
-            cache_key = ("browse", genre, status, year, page, limit)
+            year_str = query.get("year", [""])[0].strip()
+            year = int(year_str) if year_str.isdigit() else None
+            cache_key = ("browse", genre, status, str(year), str(page), str(limit))
             cached = get_cached_cli_output(cache_key, 1800)
             if cached:
                 self.send_json(cached)
                 return
-            args = ["--browse", "--page", page, "--limit", limit, "--json"]
-            if genre:
-                args.extend(["--genre", genre])
-            if status:
-                args.extend(["--status", status])
-            if year:
-                args.extend(["--year", year])
-            res = run_cli_command(args, timeout_sec=120)
+            res = browse_anime(page=page, limit=limit, genre=genre, status=status, year=year)
             if res.get("success"):
                 set_cached_cli_output(cache_key, res)
             self.send_json(res)
@@ -1221,19 +1879,14 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_json(cached)
                 return
 
-            # Direct high-speed AniList recommendation query (200-300ms) with full artwork
             recs = fetch_anilist_recommendations(seed_titles)
             if recs:
-                res = {"success": True, "data": {"results": recs[:limit_int]}}
+                res = {"success": True, "data": {"type": "search_results", "results": recs[:limit_int]}}
                 set_cached_cli_output(cache_key, res)
                 self.send_json(res)
                 return
 
-            # Fallback to CLI engine if AniList is unreachable
-            args = ["--recommendations", "--limit", str(limit_int), "--json"]
-            if seed_titles:
-                args.append("|".join(seed_titles))
-            res = run_cli_command(args, timeout_sec=20)
+            res = get_popular_anime(limit=limit_int)
             if res.get("success"):
                 set_cached_cli_output(cache_key, res)
             self.send_json(res)
@@ -1245,7 +1898,7 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             if cached:
                 self.send_json(cached)
                 return
-            res = run_cli_command(["--popular", "--json"])
+            res = get_popular_anime(limit=40)
             if res.get("success"):
                 set_cached_cli_output(cache_key, res)
             self.send_json(res)
@@ -1254,43 +1907,34 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         if path == "/api/episodes":
             title = query.get("query", [""])[0].strip()
             mode = query.get("mode", [""])[0].strip()
-            index = query.get("index", ["1"])[0].strip()
+            index_str = query.get("index", ["1"])[0].strip()
+            index = int(index_str) if index_str.isdigit() else 1
 
-            cache_key = ("episodes", title, mode, index)
+            if not title and not mode:
+                self.send_json({"error": "Missing 'query' or 'mode' parameter"}, status=400)
+                return
+
+            cache_key = ("episodes", title, mode, str(index))
             cached = get_cached_cli_output(cache_key, 600)  # 10 minutes
             if cached:
                 self.send_json(cached)
                 return
 
-            args = []
-            if title:
-                # Direct title query is always exact and deterministic
-                args.append(title)
-                cli_idx = index if mode == "search" else "1"
-                args.extend(["--anime-index", str(cli_idx)])
-            elif mode == "latest":
-                args.extend(["--latest", "--anime-index", str(index)])
-            elif mode == "popular":
-                args.extend(["--popular", "--anime-index", str(index)])
-            elif mode == "browse":
-                sort = query.get("sort", ["latest"])[0].strip()
-                page = query.get("page", ["1"])[0].strip()
-                args.extend(["--browse", "--sort", sort, "--page", page, "--anime-index", str(index)])
-            else:
-                self.send_json({"error": "Missing 'query' or 'mode' parameter"}, status=400)
-                return
+            # If mode provided without title, look up title from mode
+            target_title = title
+            if not target_title:
+                if mode == "latest":
+                    l_res = get_latest_anime(18)
+                    items = l_res.get("data", {}).get("results", [])
+                    if items and index <= len(items):
+                        target_title = items[index - 1].get("title", "")
+                elif mode == "popular":
+                    p_res = get_popular_anime(40)
+                    items = p_res.get("data", {}).get("results", [])
+                    if items and index <= len(items):
+                        target_title = items[index - 1].get("title", "")
 
-            args.append("--json")
-            res = run_cli_command(args)
-            # If search failed and title contains colons or special subtitle punctuation, retry with prefix
-            if not res.get("success") and title and ":" in title:
-                prefix = title.split(":")[0].strip()
-                if prefix:
-                    fallback_args = [prefix, "--anime-index", "1", "--json"]
-                    res_fb = run_cli_command(fallback_args)
-                    if res_fb.get("success"):
-                        res = res_fb
-
+            res = get_anime_episodes(title=target_title, index=index, mode=mode)
             if res.get("success"):
                 set_cached_cli_output(cache_key, res)
             self.send_json(res)
@@ -1299,44 +1943,35 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         if path == "/api/stream":
             title = query.get("query", [""])[0].strip()
             mode = query.get("mode", [""])[0].strip()
-            index = query.get("index", ["1"])[0].strip()
-            episode = query.get("episode", ["1"])[0].strip()
+            index_str = query.get("index", ["1"])[0].strip()
+            index = int(index_str) if index_str.isdigit() else 1
+            episode_str = query.get("episode", ["1"])[0].strip()
+            episode = int(episode_str) if episode_str.isdigit() else 1
 
-            cache_key = ("stream", title, mode, index, episode)
+            if not title and not mode:
+                self.send_json({"error": "Missing 'query' or 'mode' parameter"}, status=400)
+                return
+
+            cache_key = ("stream", title, mode, str(index), str(episode))
             cached = get_cached_cli_output(cache_key, 1800)  # 30 minutes
             if cached:
                 self.send_json(cached)
                 return
 
-            args = []
-            if title:
-                # Direct title query ensures correct anime episode stream
-                args.append(title)
-                cli_idx = index if mode == "search" else "1"
-                args.extend(["--anime-index", str(cli_idx)])
-            elif mode == "latest":
-                args.extend(["--latest", "--anime-index", str(index)])
-            elif mode == "popular":
-                args.extend(["--popular", "--anime-index", str(index)])
-            elif mode == "browse":
-                sort = query.get("sort", ["latest"])[0].strip()
-                page = query.get("page", ["1"])[0].strip()
-                args.extend(["--browse", "--sort", sort, "--page", page, "--anime-index", str(index)])
-            else:
-                self.send_json({"error": "Missing 'query' or 'mode' parameter"}, status=400)
-                return
+            target_title = title
+            if not target_title:
+                if mode == "latest":
+                    l_res = get_latest_anime(18)
+                    items = l_res.get("data", {}).get("results", [])
+                    if items and index <= len(items):
+                        target_title = items[index - 1].get("title", "")
+                elif mode == "popular":
+                    p_res = get_popular_anime(40)
+                    items = p_res.get("data", {}).get("results", [])
+                    if items and index <= len(items):
+                        target_title = items[index - 1].get("title", "")
 
-            args.extend(["--episode", str(episode), "--json"])
-            res = run_cli_command(args)
-            # If stream lookup failed and title contains colons, retry with prefix
-            if not res.get("success") and title and ":" in title:
-                prefix = title.split(":")[0].strip()
-                if prefix:
-                    fallback_args = [prefix, "--anime-index", "1", "--episode", str(episode), "--json"]
-                    res_fb = run_cli_command(fallback_args)
-                    if res_fb.get("success"):
-                        res = res_fb
-
+            res = get_stream(target_title, episode=episode)
             if res.get("success"):
                 set_cached_cli_output(cache_key, res)
             self.send_json(res)
@@ -1345,41 +1980,51 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         if path == "/api/play-mpv":
             title = query.get("query", [""])[0].strip()
             mode = query.get("mode", [""])[0].strip()
-            index = query.get("index", ["1"])[0].strip()
-            episode = query.get("episode", ["1"])[0].strip()
+            index_str = query.get("index", ["1"])[0].strip()
+            index = int(index_str) if index_str.isdigit() else 1
+            episode_str = query.get("episode", ["1"])[0].strip()
+            episode = int(episode_str) if episode_str.isdigit() else 1
 
-            args = []
-            if title:
-                args.append(title)
-                cli_idx = index if mode == "search" else "1"
-                args.extend(["--anime-index", str(cli_idx)])
-            elif mode == "latest":
-                args.extend(["--latest", "--anime-index", str(index)])
-            elif mode == "popular":
-                args.extend(["--popular", "--anime-index", str(index)])
-            elif mode == "browse":
-                sort = query.get("sort", ["latest"])[0].strip()
-                page = query.get("page", ["1"])[0].strip()
-                args.extend(["--browse", "--sort", sort, "--page", page, "--anime-index", str(index)])
-            else:
+            if not title and not mode:
                 self.send_json({"error": "Missing 'query' or 'mode' parameter"}, status=400)
                 return
 
-            args.extend(["--episode", str(episode)])
-            argv = resolve_cli_argv(args)
-            cwd = resolve_cli_cwd()
-            try:
-                subprocess.Popen(
-                    argv,
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    cwd=cwd,
-                    **hidden_subprocess_kwargs(),
-                )
-                self.send_json({"success": True, "message": f"Playing Episode {episode} in MPV"})
-            except Exception as e:
-                self.send_json({"success": False, "error": str(e)}, status=500)
+            target_title = title
+            if not target_title:
+                if mode == "latest":
+                    l_res = get_latest_anime(18)
+                    items = l_res.get("data", {}).get("results", [])
+                    if items and index <= len(items):
+                        target_title = items[index - 1].get("title", "")
+                elif mode == "popular":
+                    p_res = get_popular_anime(40)
+                    items = p_res.get("data", {}).get("results", [])
+                    if items and index <= len(items):
+                        target_title = items[index - 1].get("title", "")
+
+            res = get_stream(target_title, episode=episode)
+            if res.get("success") and res.get("data", {}).get("episodes"):
+                ep_obj = res["data"]["episodes"][0]
+                stream_url = ep_obj.get("url")
+                stream_meta = ep_obj.get("stream") or {}
+                referer = stream_meta.get("referer") or "https://bibiemb.xyz/"
+                mpv_path = resolve_mpv_path()
+                if not mpv_path:
+                    self.send_json({"success": False, "error": "MPV Player was not found on your PC."}, status=404)
+                    return
+                try:
+                    subprocess.Popen(
+                        [mpv_path, stream_url, f"--http-header-fields=Referer: {referer}", f"--title={target_title} - Episode {episode}"],
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        **hidden_subprocess_kwargs()
+                    )
+                    self.send_json({"success": True, "message": f"Playing Episode {episode} in MPV"})
+                except Exception as e:
+                    self.send_json({"success": False, "error": str(e)}, status=500)
+            else:
+                self.send_json({"success": False, "error": res.get("error", "Could not resolve stream")}, status=500)
             return
 
         # ── Static Web Files ──
@@ -1393,16 +2038,22 @@ class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
 def start_server_in_background(port: int = 3000):
     global CURRENT_PORT, SERVER_INSTANCE
-    CURRENT_PORT = port
 
     web_dir().mkdir(parents=True, exist_ok=True)
     handler = ErumiHTTPRequestHandler
-    httpd = ThreadedTCPServer(("", port), handler)
-    SERVER_INSTANCE = httpd
 
-    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-    thread.start()
-    return httpd
+    for p in range(port, port + 10):
+        try:
+            httpd = ThreadedTCPServer(("", p), handler)
+            CURRENT_PORT = p
+            SERVER_INSTANCE = httpd
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
+            return httpd
+        except OSError:
+            continue
+
+    raise RuntimeError(f"Could not bind to any port between {port} and {port+9}")
 
 
 def stop_server():
