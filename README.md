@@ -42,10 +42,10 @@ It operates in **100% Standalone Mode** without requiring Python, Node.js, or ex
 <img width="1641" height="881" alt="Screenshot 2026-08-29 124810" src="https://github.com/user-attachments/assets/35e9e6cc-2821-474a-9434-f32b6316d174" />
 </td>     
  <td align="center">       
-  <img src="https://placehold.co/600x340?text=Screenshot+2" alt="Erumi Stream Screenshot 2" width="100%">
+  <img width="1450" height="906" alt="Screenshot 2026-08-29 124829" src="https://github.com/user-attachments/assets/1f28c118-9ad0-46c4-b249-39b62a0460fa" />
  </td>
  <td align="center">
- <img src="https://placehold.co/600x340?text=Screenshot+3" alt="Erumi Stream Screenshot 3" width="100%">
+<img width="1584" height="982" alt="Screenshot 2026-08-29 132125" src="https://github.com/user-attachments/assets/436ecfa7-9031-4520-99a6-b4ce32def3d3" />
  </td>   
 </tr>   
  <tr>     
