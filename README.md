@@ -1,278 +1,138 @@
 <div align="center">
 
-# <img width="192" height="192" alt="Erumi" src="https://github.com/user-attachments/assets/e8767ecb-47dc-43b6-a241-ef616d248eab" />
+# 🌸 Erumi Stream — Anime Streaming Platform
 
-# Erumi — Anime Streaming Platform
+**A modern, zero-dependency, self-hosted anime streaming suite.**
 
-**A modern, self-hosted anime streaming suite powered by the Yorumi CLI engine.**
+*Search → Select → Stream in 1080p — right from your desktop, browser, or any device on your Wi-Fi.*
 
-*Search → Select → Stream — right from your desktop or any device on your Wi-Fi.*
+---
+
+[![Version](https://img.shields.io/badge/version-2.7.0-blue.svg?style=for-the-badge)](https://github.com/davenarchives/Yorumi)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Web%20%7C%20LAN%20%7C%20PWA-teal.svg?style=for-the-badge)]()
+[![License](https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge)]()
+[![No Dependencies](https://img.shields.io/badge/standalone-No%20Python%20%2F%20Node%20Needed-purple.svg?style=for-the-badge)]()
 
 </div>
 
 ---
 
-## 🌐 Web Interface
-
-<table>
-  <tr>
-    <td align="center">
-      <img src="https://github.com/user-attachments/assets/6b3d487d-7c9c-4731-af4a-dc4197af59aa" alt="Web Interface - Home" width="500">
-    </td>
-    <td align="center">
-      <img src="https://github.com/user-attachments/assets/1dd38fa6-82b3-4ae1-a7f7-55ae42c85fcd" alt="Web Interface - Browse" width="500">
-    </td>
-    <td align="center">
-      <img src="https://github.com/user-attachments/assets/c5da53ad-4dcd-4c56-810c-6da377bd9e2e" alt="Web Interface - Player" width="500">
-    </td>
-  </tr>
-</table>
-
-## 📱 Android Interface
-
-<table>
-  <tr>
-    <td align="center">
-      <img src="https://github.com/user-attachments/assets/febf6bcc-013f-4da9-8f59-85e730b4b501" alt="Android Interface - Home" width="250">
-    </td>
-    <td align="center">
-      <img src="https://github.com/user-attachments/assets/fda421c7-cd9a-4ab4-8c33-c6e1e3246fa5" alt="Android Interface - Browse" width="250">
-    </td>
-    <td align="center">
-      <img src="https://github.com/user-attachments/assets/d1808b17-1ebc-4875-8539-0e52ac9438ad" alt="Android Interface - Player" width="250">
-    </td>
-    <td align="center">
-      <img src="https://github.com/user-attachments/assets/bfed7640-e5a1-42c5-8e84-7d6043768cf7" alt="Android Interface - Episodes" width="250">
-    </td>
-  </tr>
-</table>
-
----
-
 ## 📖 What is Erumi?
 
-**Erumi** is a full-featured, self-hosted anime streaming platform that runs on your Windows PC and can be accessed from other devices on your local network. It wraps the open-source **Yorumi CLI** anime engine in two polished interfaces:
+**Erumi** is a full-featured anime streaming platform with a native desktop controller, an embedded high-performance HLS proxy server, and a responsive cinema-style web application.
 
-| Mode                                            | What it does                                                                             |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| 🖥️ **Desktop GUI** (`Erumi.exe`)               | A native Windows dark-theme app. Search anime → pick an episode → plays in **mpv**.      |
-| 🌐 **Web Streaming Server** (`ErumiServer.exe`) | A local web server. Stream in your **browser** or on any phone/tablet on the same Wi-Fi. |
+It operates in **100% Standalone Mode** without requiring Python, Node.js, or external CLI installations on the client's machine.
 
-**No account. No subscription. No ads. Just anime.**
+| Distribution Mode | How it Works | Primary Use Case |
+|---|---|---|
+| 📦 **Windows Setup Installer** (`ErumiStream_Setup_v2.7.0.exe`) | Standard Windows installation wizard with desktop shortcut, Start Menu entry, and auto-start option. | General users & friends. |
+| 🗜️ **Portable Archive** (`ErumiStream_Portable_Windows.zip`) | Zero-install portable folder. Extract and double-click `ErumiServer.exe`. | Flash drives, VMs, clean Windows PCs. |
+| 🌐 **LAN & PWA Web Server** | Host locally on port 3000 and stream to phones, tablets, Smart TVs, and Android devices. | Home media & multi-device streaming. |
+
+**No accounts. No subscriptions. No ads. Just anime in 1080p.**
 
 ---
 
-## ✨ Features
+## ✨ Key Features
 
-* 🔍 **Search, Latest & Popular** anime browsing via Yorumi CLI
-* 🎬 **Cinema-style web player** with HLS.js for smooth in-browser streaming
-* 📡 **LAN Wi-Fi streaming** — share to phones, tablets, and smart TVs with a QR code
-* 🖼️ **High-res anime covers** pulled from AniList, TMDB, and Jikan APIs
-* ⭐ **Community ratings** via AniList
-* 🔄 **Auto next episode** and quality selection (1080p / 720p / auto)
-* 📱 **PWA support** — install the web app to your Android home screen (no APK needed!)
-* 📦 **Android APK** via Capacitor (for advanced users — see [`android_setup_guide.md`](android_setup_guide.md))
-* 💾 **Built-in caching** for fast repeat searches
-* 🔒 **SSRF-protected** HLS proxy for safe local streaming
-* 🪟 **Zero terminal required** — double-click `.exe` to launch
+- ⚡ **Multi-Tier Native Stream Resolvers**:
+  - **AniDB Engine** (`anidb.app`): Primary high-bitrate adaptive 1080p HLS stream extractor.
+  - **AniNeko Engine** (`anineko.to` / `vivibebe.site`): Intelligent TV series prioritization over recaps/OVAs.
+  - **AllAnime GraphQL**: Fallback episode indexer and multi-server resolver.
+- 🎬 **Cinema Web Player**: Custom HTML5 player powered by **Hls.js** with subtitle toggling (`Sub`/`Dub`), auto-quality switching, auto-next episode, and theater mode.
+- 📡 **LAN Wi-Fi Streaming & QR Code**: Share your stream across your home Wi-Fi. Scan the QR code with your phone or tablet to start watching instantly.
+- 🖼️ **Rich Metadata & Banners**: High-resolution banners, posters, studios, release schedules, and community scores pulled via **AniList GraphQL API**.
+- 🛡️ **Built-in HLS Reverse Proxy**:
+  - Automatically bypasses CORS and ISP stream throttling.
+  - Resolves encrypted `#EXT-X-KEY` and `#EXT-X-MAP` initialization segments.
+  - Strips disguised PNG headers (`\x89PNG...`) on-the-fly for players.
+  - Sandboxed SSL context support for clean Windows VMs.
+- 📱 **PWA & Android Support**: Install directly as a Progressive Web App (PWA) to your home screen or build as an APK via Capacitor.
 
 ---
 
 ## 🗂️ Project Structure
 
-```text
+```
 yorumi anime streaming/
 │
-├── 📄 main.py               # Desktop GUI app (Erumi.exe source)
-├── 📄 web_server.py         # HTTP server + HLS proxy + Yorumi CLI API
-├── 📄 server_app.py         # Standalone server desktop controller (ErumiServer.exe source)
+├── 📄 main.py                      # Desktop GUI app (plays directly in mpv)
+├── 📄 web_server.py                # Standalone HTTP Server, HLS Proxy, and Native Scraping Engine
+├── 📄 server_app.py                # CustomTkinter GUI Server Launcher (ErumiServer.exe source)
 │
-├── 📁 web/                  # Web frontend (HTML/CSS/JS) — served by web_server.py
-│   ├── index.html           # Main SPA — browse, search, player
-│   ├── style.css            # Full dark-theme stylesheet
-│   ├── app.js               # Frontend JS — all app logic
-│   ├── sw.js                # Service Worker (PWA offline support)
-│   ├── hls.min.js           # Bundled HLS.js (works offline/APK)
-│   ├── feather.min.js       # Bundled icon library
-│   ├── offline.html         # Shown when offline
-│   ├── erumi.png            # Erumi mascot image
-│   └── site.webmanifest     # PWA manifest
+├── 📁 web/                         # Web frontend (SPA served by web_server.py)
+│   ├── index.html                  # Main cinema browsing & streaming UI
+│   ├── style.css                   # Glassmorphic dark-theme stylesheet
+│   ├── app.js                      # Core frontend application logic (v2.7.0)
+│   ├── sw.js                       # PWA Service Worker (API cache-bypassing)
+│   ├── hls.min.js                  # Bundled Hls.js library
+│   ├── feather.min.js              # Bundled icon library
+│   ├── offline.html                # Offline status page
+│   └── site.webmanifest            # PWA manifest configuration
 │
-├── 📁 web-loader/           # Android APK loader page (Capacitor entry point)
-│   └── index.html           # QR code scanner + server connect screen
+├── 📁 favicon/                     # Icons, logos, and mascot assets
+├── 📁 installer_output/            # Compiled Inno Setup installer (.exe)
 │
-├── 📁 favicon/              # App icons (favicon.ico, PNG variants, mascot)
-│
-├── 📁 yorumi-cli-main/      # Bundled Yorumi CLI (Node.js)
-│   └── bin/
-│       └── yorumi-cli.cjs   # Main CLI entry (run with Node.js)
-│
-├── 📄 yorumi-cli.cmd        # Windows launcher for yorumi-cli.cjs
-├── 📄 erumi_config.json     # User config (port, quality, cache TTL, etc.)
-├── 📄 requirements.txt      # Python dependencies
-├── 📄 package.json          # Node/Capacitor dependencies (Android APK only)
-├── 📄 capacitor.config.json # Capacitor Android build config
-│
-├── 📄 build.bat             # Build Erumi.exe (Desktop GUI)
-├── 📄 build.spec            # PyInstaller spec for Desktop GUI
-├── 📄 build_server.bat      # Build ErumiServer.exe (Web Server)
-├── 📄 build_server.spec     # PyInstaller spec for Web Server
-└── 📄 start_web.bat         # Start the web server without building an .exe
+├── 📄 erumi_installer.iss          # Inno Setup 6 compiler script
+├── 📄 build_installer.bat          # 1-Click build script for Inno Setup installer
+├── 📄 build_server.bat             # PyInstaller script for ErumiServer.exe
+├── 📄 build.bat                    # PyInstaller script for Erumi.exe (mpv GUI)
+├── 📄 start_web.bat                # Direct Python runner (development mode)
+├── 📄 erumi_config.json            # Server & playback configuration
+└── 📄 requirements.txt             # Python dependencies (for developers)
 ```
 
 ---
 
-## 🛠️ Requirements
+## 🚀 Quick Start (For End Users)
 
-### Required — Always
+### Option 1: Using the Windows Installer *(Recommended)*
+1. Download **`ErumiStream_Setup_v2.7.0.exe`** from the `installer_output/` folder.
+2. Run the installer and complete the setup wizard.
+3. Launch **Erumi Stream** from your Desktop or Start Menu.
+4. Your browser will automatically open to `http://localhost:3000`.
 
-| Tool        | Version | Why                                              | Download                                        |
-| ----------- | ------- | ------------------------------------------------ | ----------------------------------------------- |
-| **Python**  | 3.10+   | Runs `main.py`, `web_server.py`, `server_app.py` | [python.org](https://www.python.org/downloads/) |
-| **Node.js** | 18+     | Runs the Yorumi CLI engine (`yorumi-cli.cjs`)    | [nodejs.org](https://nodejs.org/)               |
-
-> **Important:** When installing Python on Windows, **check "Add Python to PATH"** during setup.
-
-### Required — Python Packages
-
-Install with one command:
-
-```bash
-pip install -r requirements.txt
-```
-
-| Package                  | Purpose                                      |
-| ------------------------ | -------------------------------------------- |
-| `customtkinter >= 5.2.0` | Modern dark-theme GUI widgets                |
-| `Pillow >= 10.0.0`       | Image handling (mascot, icons)               |
-| `pyinstaller >= 6.0.0`   | Build `.exe` files (only needed if building) |
-| `pywin32 >= 306`         | Windows-specific subprocess flags            |
-
-### Optional — For Android APK Only
-
-| Tool                        | Why                         |
-| --------------------------- | --------------------------- |
-| **Android Studio** (latest) | Build and sign the APK      |
-| **Java JDK 17+**            | Bundled with Android Studio |
-
-See [`android_setup_guide.md`](android_setup_guide.md) for the full APK build walkthrough.
+### Option 2: Using the Portable ZIP
+1. Download and extract **`ErumiStream_Portable_Windows.zip`**.
+2. Double-click **`ErumiServer.exe`**.
+3. Select any anime to start streaming immediately in 1080p.
 
 ---
 
-## 🚀 Getting Started
+## 🛠️ Developer Setup & Building from Source
 
-### Step 1 — Clone or Download the Project
+### Prerequisites
+- **Python 3.10+** (Check *"Add Python to PATH"* during installation)
+- **Inno Setup 6** (Optional &mdash; only needed for compiling the installer)
 
+### 1. Install Dependencies
 ```bash
 git clone https://github.com/YOUR_USERNAME/yorumi-anime-streaming.git
-cd yorumi-anime-streaming
-```
-
-Or click **Download ZIP** on GitHub and extract it.
-
-### Step 2 — Install Python Dependencies
-
-```bash
+cd "yorumi anime streaming"
 pip install -r requirements.txt
 ```
 
-### Step 3 — Choose How to Run
-
-See the usage options below.
-
----
-
-## ▶️ How to Use
-
-### 🌐 Mode 1: Web Streaming Server *(Recommended)*
-
-The easiest way to watch anime on **any device** — PC, phone, tablet, or smart TV.
-
-**Option A — Batch file (quickest):**
-
-```text
-Double-click start_web.bat
-```
-
-**Option B — Python:**
-
+### 2. Run Development Server
 ```bash
 python server_app.py
 ```
+*Or simply double-click `start_web.bat`.*
 
-**Option C — Built executable:**
-
-```text
-Double-click dist\ErumiServer.exe
-```
-
-Once running:
-
-1. Your browser opens automatically at **http://localhost:3000**
-2. To watch on your **phone or tablet**, click **"Copy Wi-Fi Link"** in the server window and open it on your device *(both must be on the same Wi-Fi)*
-3. The web app shows a scannable QR code for quick phone access
-
----
-
-### 🖥️ Mode 2: Desktop GUI *(plays in mpv)*
-
-A native Windows app that searches anime and plays episodes directly in **mpv**.
-
-> **Note:** [mpv](https://mpv.io/) must be installed for playback in this mode.
-
-**Run:**
-
-```bash
-python main.py
-```
-
-Or double-click `dist\Erumi.exe` after building.
-
-**How to use:**
-
-1. Type an anime title → press **Enter** or click **Search**
-2. Click the result number to select it
-3. Pick an episode — it streams in mpv automatically
-4. Use **Latest**, **Popular**, **Help**, and **Version** for quick browsing
-5. Click **CLI Path** in the sidebar → browse to `yorumi-cli.cmd` if the CLI is not found automatically
+### 3. Build Standalone Binaries & Installer
+- **Build Server Executable (`dist/ErumiServer.exe`)**:
+  ```bash
+  build_server.bat
+  ```
+- **Build Full Inno Setup Installer (`installer_output/ErumiStream_Setup_v2.7.0.exe`)**:
+  ```bash
+  build_installer.bat
+  ```
 
 ---
 
-### 📦 Mode 3: Build Standalone `.exe` Files
+## ⚙️ Configuration (`erumi_config.json`)
 
-Build a single `.exe` to share with friends who don't have Python installed.
-
-**Build the Web Server:**
-
-```bash
-build_server.bat
-
-# Output:
-dist\ErumiServer.exe
-```
-
-**Build the Desktop GUI:**
-
-```bash
-build.bat
-
-# Output:
-dist\Erumi.exe
-```
-
-> **After building**, copy these alongside the `.exe`:
->
-> * `yorumi-cli.cmd`
-> * The entire `yorumi-cli-main/` folder
-> * `erumi_config.json`
-> * `favicon/` folder
-> * `web/` folder (only needed for ErumiServer)
-
----
-
-## ⚙️ Configuration
-
-Edit `erumi_config.json` to customize:
+The server configuration can be customized in `erumi_config.json` or via the in-app **Settings** modal:
 
 ```json
 {
@@ -295,79 +155,36 @@ Edit `erumi_config.json` to customize:
 }
 ```
 
-| Option              | Values                  | Description                                |
-| ------------------- | ----------------------- | ------------------------------------------ |
-| `port`              | Any number              | Port the server listens on (default: 3000) |
-| `preferred_quality` | `1080p`, `720p`, `auto` | Default streaming quality                  |
-| `default_mode`      | `sub`, `dub`            | Subtitled or dubbed by default             |
-| `auto_next_episode` | `true` / `false`        | Auto-play next episode                     |
-| `cache.enabled`     | `true` / `false`        | Cache search results for faster loading    |
-
 ---
 
-## 🔧 Troubleshooting
+## 🔍 Built-In Diagnostics
 
-**"CLI not found" on startup**
-
-* Make sure `yorumi-cli.cmd` is in the same folder as `main.py`
-* Click **CLI Path** in the sidebar and browse to `yorumi-cli.cmd`
-* Check Node.js is installed:
-
-```bash
-node --version
-```
-
-**Port 3000 already in use**
-
-* Change the port in `erumi_config.json` → `"port": 3001`
-* Or close whatever else is using port 3000
-
-**Video not playing in browser**
-
-* Use `http://localhost:3000` — not `https://`
-* Chrome or Edge recommended
-
-**Phone/tablet can't connect**
-
-* Both devices must be on the **same Wi-Fi network**
-* Temporarily disable Windows Firewall if blocked
-* Use the LAN IP shown in the server window, for example:
-
-```text
-http://192.168.1.5:3000
-```
-
-**Build errors**
-
-```bash
-pip install -r requirements.txt
-pip install pyinstaller --upgrade
-```
+If you encounter any streaming or network issues on a restricted network or VM:
+- Navigate to: **`http://localhost:3000/api/debug-stream?query=Solo+Leveling&episode=1`**
+- The server will perform a live diagnostic check on provider resolution, HLS headers, and proxy status.
 
 ---
 
 ## 🧰 Tech Stack
 
-| Layer             | Technology                                        |
-| ----------------- | ------------------------------------------------- |
-| Desktop GUI       | Python · CustomTkinter · Pillow                   |
-| Web Frontend      | Vanilla HTML/CSS/JS · HLS.js · Feather Icons      |
-| Web Server / API  | Python `http.server` · `socketserver` · Threading |
-| CLI Engine        | Node.js · Yorumi CLI (`.cjs` bundle)              |
-| Android APK       | Capacitor 7 · Android Gradle                      |
-| Build / Packaging | PyInstaller                                       |
-| PWA               | Service Worker (`sw.js`) · Web App Manifest       |
+| Layer | Technology |
+|---|---|
+| **Server Engine** | Python 3 · `ThreadingHTTPServer` · Multi-source Scraper Pipeline |
+| **Frontend UI** | Modern Vanilla JavaScript · HTML5 Canvas · Feather Icons |
+| **Video Engine** | HLS.js (Adaptive Bitrate Streaming) · Custom Native Proxy |
+| **Metadata** | AniList GraphQL API |
+| **Desktop Shell** | CustomTkinter · Tkinter · DarkDetect |
+| **Packaging & Installer**| PyInstaller · Inno Setup 6 (LZMA2 Ultra Compression) |
 
 ---
 
-## 📜 License
+## 📜 License & Disclaimer
 
-MIT — see [`yorumi-cli-main/LICENSE`](yorumi-cli-main/LICENSE)
+- Distributed under the **MIT License**.
+- **Educational Disclaimer**: This project does not host or store copyrighted media files. All content is resolved in real-time from publicly available third-party sources.
 
 ---
 
 <div align="center">
-
-Created by <strong>Jhudel</strong> · Powered by Yorumi CLI
-
+Made with 🌸 by <strong>Jhudel</strong> · Erumi Stream v2.7.0
 </div>
