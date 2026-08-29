@@ -88,16 +88,11 @@ Erumi anime streaming/
 
 ## 🚀 Quick Start (For End Users)
 
-### Option 1: Using the Windows Installer *(Recommended)*
+### Using the Windows Installer *(Recommended)*
 1. Download **`ErumiStream_Setup_v2.7.0.exe`** from the `installer_output/` folder.
 2. Run the installer and complete the setup wizard.
 3. Launch **Erumi Stream** from your Desktop or Start Menu.
 4. Your browser will automatically open to `http://localhost:3000`.
-
-### Option 2: Using the Portable ZIP
-1. Download and extract **`ErumiStream_Portable_Windows.zip`**.
-2. Double-click **`ErumiServer.exe`**.
-3. Select any anime to start streaming immediately in 1080p.
 
 ---
 
