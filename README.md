@@ -35,6 +35,9 @@ It operates in **100% Standalone Mode** without requiring Python, Node.js, or ex
 
 ---
 
+🖼️ Screenshots  Desktop & Web Interface  <table>   <tr>     <td align="center">       <img src="https://placehold.co/600x340?text=Screenshot+1" alt="Erumi Stream Screenshot 1" width="100%">     </td>     <td align="center">       <img src="https://placehold.co/600x340?text=Screenshot+2" alt="Erumi Stream Screenshot 2" width="100%">     </td>     <td align="center">       <img src="https://placehold.co/600x340?text=Screenshot+3" alt="Erumi Stream Screenshot 3" width="100%">     </td>   </tr>   <tr>     <td align="center"><strong>Home / Browse</strong></td>     <td align="center"><strong>Anime Details</strong></td>     <td align="center"><strong>Video Player</strong></td>   </tr> </table>  More Screenshots  <table>   <tr>     <td align="center">       <img src="https://placehold.co/600x340?text=Screenshot+4" alt="Erumi Stream Screenshot 4" width="100%">     </td>     <td align="center">       <img src="https://placehold.co/600x340?text=Screenshot+5" alt="Erumi Stream Screenshot 5" width="100%">     </td>     <td align="center">       <img src="https://placehold.co/600x340?text=Screenshot+6" alt="Erumi Stream Screenshot 6" width="100%">     </td>   </tr>   <tr>     <td align="center"><strong>Search</strong></td>     <td align="center"><strong>Settings</strong></td>     <td align="center"><strong>Mobile / PWA</strong></td>   </tr> </table>
+
+
 ## ✨ Key Features
 
 - ⚡ **Multi-Tier Native Stream Resolvers**:
