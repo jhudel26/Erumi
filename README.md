@@ -41,32 +41,38 @@ It operates in **100% Standalone Mode** without requiring Python, Node.js, or ex
 <td align="center">       
 <img width="1641" height="881" alt="Screenshot 2026-08-29 124810" src="https://github.com/user-attachments/assets/35e9e6cc-2821-474a-9434-f32b6316d174" />
 </td>     
- <td align="center">       
-  <img width="1450" height="906" alt="Screenshot 2026-08-29 124829" src="https://github.com/user-attachments/assets/1f28c118-9ad0-46c4-b249-39b62a0460fa" />
- </td>
- <td align="center">
+<td align="center">       
+<img width="1450" height="906" alt="Screenshot 2026-08-29 124829" src="https://github.com/user-attachments/assets/1f28c118-9ad0-46c4-b249-39b62a0460fa" />
+</td>
+<td align="center">
 <img width="1584" height="982" alt="Screenshot 2026-08-29 132125" src="https://github.com/user-attachments/assets/436ecfa7-9031-4520-99a6-b4ce32def3d3" />
- </td>   
+</td>   
 </tr>   
- <tr>     
- <td align="center">
- <strong>Home / Browse</strong></td>     
- <td align="center"><strong>Anime Details</strong></td>    
-  <td align="center"><strong>Video Player</strong></td>   
- </tr> 
-</table>  More Screenshots  <table>   <tr>     
- <td align="center">      
-  <img src="https://placehold.co/600x340?text=Screenshot+4" alt="Erumi Stream Screenshot 4" width="100%">    
- </td>     
- <td align="center">       
-  <img src="https://placehold.co/600x340?text=Screenshot+5" alt="Erumi Stream Screenshot 5" width="100%">     
- </td>    
- <td align="center">     
-  <img src="https://placehold.co/600x340?text=Screenshot+6" alt="Erumi Stream Screenshot 6" width="100%">     
- </td>   </tr>   <tr>    
-  <td align="center"><strong>Search</strong></td>     
-  <td align="center"><strong>Settings</strong></td>    
-  <td align="center"><strong>Mobile / PWA</strong></td>   </tr> </table>
+<tr>     
+<td align="center">
+<strong>Home / Browse</strong>
+</td>     
+<td align="center"><strong>Anime Details</strong></td>    
+<td align="center"><strong>Video Player</strong></td>   
+</tr> 
+</table>  
+More Screenshots  
+<table>   
+<tr>     
+<td align="center">      
+<img width="1549" height="975" alt="Screenshot 2026-08-29 125008" src="https://github.com/user-attachments/assets/167d858d-fc10-4d45-84a9-50c0f70b4818" />
+</td>     
+<td align="center">       
+<img width="1550" height="982" alt="Screenshot 2026-08-29 124841" src="https://github.com/user-attachments/assets/142f6d1e-7989-46fd-9418-426ede8b46f8" />
+</td>    
+<td align="center">     
+<img width="410" height="884" alt="Screenshot 2026-08-29 132257" src="https://github.com/user-attachments/assets/ae344e4a-16d8-41c2-aa5c-a719a238c663" />
+</td>
+</tr>
+<tr>    
+<td align="center"><strong>Search</strong></td>     
+<td align="center"><strong>History</strong></td>    
+<td align="center"><strong>Mobile / PWA</strong></td>   </tr> </table>
 
 
 ## ✨ Key Features
