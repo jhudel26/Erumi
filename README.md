@@ -1,6 +1,7 @@
 <div align="center">
 
-# 🌸 Erumi Stream — Anime Streaming Platform
+# <img width="32" height="32" alt="favicon-32x32" src="https://github.com/user-attachments/assets/f0076918-2fb2-42b0-be8b-0fc4be010b78" />
+ Erumi Stream — Anime Streaming Platform
 
 **A modern, zero-dependency, self-hosted anime streaming suite.**
 
