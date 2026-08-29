@@ -52,7 +52,7 @@ It operates in **100% Standalone Mode** without requiring Python, Node.js, or ex
 <td align="center">
 <strong>Home / Browse</strong>
 </td>     
-<td align="center"><strong>Anime Details</strong></td>    
+<td align="center"><strong>Recommended / Latest released</strong></td>    
 <td align="center"><strong>Video Player</strong></td>   
 </tr> 
 </table>  
@@ -67,6 +67,7 @@ More Screenshots
 </td>    
 <td align="center">     
 <img width="410" height="884" alt="Screenshot 2026-08-29 132257" src="https://github.com/user-attachments/assets/ae344e4a-16d8-41c2-aa5c-a719a238c663" />
+<img width="415" height="901" alt="Screenshot 2026-08-29 125250" src="https://github.com/user-attachments/assets/4d82d417-cc98-477a-85d8-bc5446b39136" />
 </td>
 </tr>
 <tr>    
