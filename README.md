@@ -67,13 +67,15 @@ More Screenshots
 </td>    
 <td align="center">     
 <img width="410" height="884" alt="Screenshot 2026-08-29 132257" src="https://github.com/user-attachments/assets/ae344e4a-16d8-41c2-aa5c-a719a238c663" />
-<td><img width="415" height="901" alt="Screenshot 2026-08-29 125250" src="https://github.com/user-attachments/assets/4d82d417-cc98-477a-85d8-bc5446b39136" /></td>
+<td><img width="415" height="901" alt="Screenshot 2026-08-29 125250" src="https://github.com/user-attachments/assets/4d82d417-cc98-477a-85d8-bc5446b39136" />
 </td>
 </tr>
 <tr>    
 <td align="center"><strong>Search</strong></td>     
 <td align="center"><strong>History</strong></td>    
-<td align="center"><strong>Mobile / PWA</strong></td>   </tr> </table>
+<td align="center"><strong>Mobile / PWA</strong></td>
+</tr>
+</table>
 
 
 ## ✨ Key Features
