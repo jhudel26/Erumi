@@ -1,8 +1,8 @@
 /**
- * Erumi Web Application Frontend Core - Teal Cinema Edition v2.5.1
+ * Erumi Web Application Frontend Core - Teal Cinema Edition v2.7.2
  * Capacitor/APK Server Connect + Jellyfin Settings Dashboard
  */
-console.log('[Erumi] app.js v2.5.1 loaded — Capacitor build support active');
+console.log('[Erumi] app.js v2.7.2 loaded — HLS fragment timeout fix active');
 
 class ErumiApp {
   constructor() {
@@ -665,7 +665,9 @@ class ErumiApp {
       const url = new URL(`${this.apiUrl}/api/metadata`);
       url.searchParams.set('q', cleanTitle);
       if (year) url.searchParams.set('year', String(year));
-      const res = await fetch(url.toString());
+      const res = await fetch(url.toString(), {
+        signal: AbortSignal.timeout(8000) // Fix 7: Cap metadata fetch — AniList rate-limiting can cause hangs
+      });
       const json = await res.json();
       if (json.success && json.data) {
         const meta = parseMedia(json.data);
@@ -704,7 +706,8 @@ class ErumiApp {
       const res = await fetch('https://graphql.anilist.co', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, variables: { s: cleanTitle } })
+        body: JSON.stringify({ query, variables: { s: cleanTitle } }),
+        signal: AbortSignal.timeout(8000) // Fix 7b: Cap AniList direct fetch — rate-limit (429) can hang
       });
       const data = await res.json();
       const mediaList = data?.data?.Page?.media || [];
@@ -1121,7 +1124,8 @@ class ErumiApp {
 
     this.updateSaveButtonState();
 
-    // Fetch poster & metadata in parallel (with season & year matching)
+    // Fix 6: Start episode fetch immediately — don't block on metadata (AniList can be slow/rate-limited)
+    // Both run in parallel; meta is applied to the episode filter once both settle.
     const metaPromise = this.fetchAnimeMetadata(anime.title, anime.year);
     metaPromise.then(meta => {
       if (this._watchSessionId !== sessionId) return; // stale — user opened a different anime
@@ -1136,10 +1140,9 @@ class ErumiApp {
       }
     });
 
-    // Fetch and render verified available episode list
-    const meta = await metaPromise;
-    if (this._watchSessionId !== sessionId) return; // user opened another anime while awaiting
-    await this.fetchEpisodesForWatchView(anime, targetEpIdentifier, resumeTime, meta, sessionId);
+    // Fetch and render verified available episode list — passes null for meta initially;
+    // the meta filter inside fetchEpisodesForWatchView will be skipped and episodes render immediately.
+    await this.fetchEpisodesForWatchView(anime, targetEpIdentifier, resumeTime, null, sessionId);
   }
 
   async fetchEpisodesForWatchView(anime, targetEpIdentifier = 0, resumeTime = null, meta = null, sessionId = null) {
@@ -1149,7 +1152,9 @@ class ErumiApp {
     const params = this.buildAnimeApiParams(anime);
 
     try {
-      const res = await fetch(`${this.apiUrl}/api/episodes?${params.toString()}`);
+      const res = await fetch(`${this.apiUrl}/api/episodes?${params.toString()}`, {
+        signal: AbortSignal.timeout(30000) // Fix 3: 30s cap so sidebar spinner can't hang forever
+      });
       const json = await res.json();
       
       if (json.success && json.data && json.data.episodes && json.data.episodes.length > 0) {
@@ -1356,7 +1361,9 @@ class ErumiApp {
     const params = this.buildAnimeApiParams(this.currentAnime, { episode: epNum });
 
     try {
-      const res = await fetch(`${this.apiUrl}/api/stream?${params.toString()}`);
+      const res = await fetch(`${this.apiUrl}/api/stream?${params.toString()}`, {
+        signal: AbortSignal.timeout(45000) // Fix 2: 45s hard cap — server waterfall can run up to 90s without this
+      });
       const json = await res.json();
 
       // Discard if a newer episode click happened while this was fetching
@@ -1372,6 +1379,10 @@ class ErumiApp {
         this.initVideoPlayer(proxiedUrl, explicitResumeTime);
         this.showToast(`Now Streaming: Episode ${epNum}`, 'success');
       } else {
+        // Fix 1: Always hide loader on failure so spinner never gets permanently stuck
+        this.videoLoader.style.display = 'none';
+        // Fix 5: Reset switching flag so episode clicks work correctly after a failure
+        this._isSwitchingEpisode = false;
         ep.unavailable = true;
         this.renderSidebarEpisodeList(this.currentEpisodes);
         const err = (json && json.error) ? json.error : `Episode ${epNum} is currently unavailable or has not aired yet.`;
@@ -1379,6 +1390,9 @@ class ErumiApp {
         this.showToast(err, 'error');
       }
     } catch (e) {
+      // Fix 9: Check staleness AFTER resetting state so a failed new request still cleans up
+      this.videoLoader.style.display = 'none';
+      this._isSwitchingEpisode = false;
       if (this._playRequestId !== playId) return; // stale error from a superseded request
       ep.unavailable = true;
       this.renderSidebarEpisodeList(this.currentEpisodes);
@@ -1389,6 +1403,7 @@ class ErumiApp {
 
   initVideoPlayer(streamUrl, explicitResumeTime = null) {
     this.videoLoader.style.display = 'none';
+    this._hlsNetworkRetries = 0; // Fix 4b: Reset retry counter for each new episode
     if (this.hls) {
       this.hls.destroy();
       this.hls = null;
@@ -1400,7 +1415,28 @@ class ErumiApp {
     if (Hls.isSupported()) {
       this.hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: true,
+        lowLatencyMode: false,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+        maxBufferSize: 60 * 1000 * 1000,
+        maxBufferHole: 0.5,
+        highBufferWatchdogPeriod: 2,
+        nudgeOffset: 0.1,
+        nudgeMaxRetry: 5,
+        // Fix 13e: Match fragLoadingTimeOut to the proxy's upstream timeout (60 s).
+        // AniDB segments are ~440 KB routed through a localhost proxy, so 25 s was
+        // too short — HLS.js was timing out before the proxy could finish streaming.
+        fragLoadingTimeOut: 60000,
+        manifestLoadingTimeOut: 20000,
+        levelLoadingTimeOut: 20000,
+        // Fix 13f: Let HLS.js retry fragment loads internally with exponential back-off
+        // before escalating to a fatal NETWORK_ERROR. Previously 0 built-in retries meant
+        // every transient timeout immediately became fatal and hit our manual startLoad() loop.
+        fragLoadingMaxRetry: 4,
+        fragLoadingRetryDelay: 1000,
+        fragLoadingMaxRetryTimeout: 8000,
+        manifestLoadingMaxRetry: 2,
+        levelLoadingMaxRetry: 4,
       });
       this.hls.loadSource(streamUrl);
       this.hls.attachMedia(this.videoPlayer);
@@ -1411,15 +1447,39 @@ class ErumiApp {
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              this.hls.startLoad();
+              // Fix 4 / Fix 13g: Cap retries — without this, expired CDN URLs cause an infinite silent loop.
+              // Use loadSource() to fully re-request the manifest + segments from scratch; startLoad()
+              // only resumes buffering from the current position and won't recover a stale CDN URL.
+              this._hlsNetworkRetries = (this._hlsNetworkRetries || 0) + 1;
+              if (this._hlsNetworkRetries <= 3) {
+                console.warn(`[Erumi] HLS Network error (attempt ${this._hlsNetworkRetries}/3), reloading source...`, data);
+                this.hls.stopLoad();
+                this.hls.loadSource(streamUrl);
+                this.hls.startLoad();
+              } else {
+                console.error('[Erumi] HLS Network error: max retries (3) exceeded. Giving up.', data);
+                this._hlsNetworkRetries = 0;
+                this.hls.destroy();
+                this.hls = null;
+                this.videoStatusText.textContent = 'Stream unavailable. Please re-select the episode or try again.';
+                this.videoLoader.style.display = 'flex';
+                this.showToast('Stream failed after 3 retries. Please re-select the episode.', 'error');
+              }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
+              console.warn('[Erumi] HLS Media error, attempting recovery...', data);
               this.hls.recoverMediaError();
               break;
             default:
+              console.error('[Erumi] Fatal unrecoverable HLS error:', data);
               this.hls.destroy();
               this.hls = null;
+              this.showToast('Playback stream error. Please re-select episode.', 'warning');
               break;
+          }
+        } else if (data.details === 'bufferStalledError') {
+          if (this.videoPlayer && !this.videoPlayer.paused) {
+            this.videoPlayer.currentTime += 0.1;
           }
         }
       });
@@ -1444,7 +1504,15 @@ class ErumiApp {
     }
     // Done switching, allow normal timeupdate progress saving
     this._isSwitchingEpisode = false;
-    this.videoPlayer.play().catch(() => {});
+    const playPromise = this.videoPlayer.play();
+    if (playPromise !== undefined) {
+      playPromise.catch((err) => {
+        this.videoLoader.style.display = 'none';
+        if (this.videoOverlayPlay) {
+          this.videoOverlayPlay.classList.remove('hidden');
+        }
+      });
+    }
   }
 
   playPrevEpisode() {

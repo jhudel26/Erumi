@@ -38,6 +38,17 @@ except Exception:
 
 import time
 
+# Fix 12: Trusted CDN/streaming hostnames — these bypass the private-IP SSRF block.
+# Some CDN providers use split-horizon DNS or route through RFC-1918 addresses.
+# Only add domains you explicitly trust as stream sources.
+TRUSTED_CDN_HOSTNAMES = {
+    "anidb.app", "www.anidb.app",
+    "anineko.com", "www.anineko.com", "cdn.anineko.com", "stream.anineko.com",
+    "allanime.day", "api.allanime.day",
+    "allanime.to", "api.allanime.to",
+    "anilist.co", "graphql.anilist.co",
+}
+
 def is_trusted_url(url: str) -> bool:
     try:
         parsed = urllib.parse.urlparse(url)
@@ -51,6 +62,12 @@ def is_trusted_url(url: str) -> bool:
             
         # Allow loopback for local API networking/testing
         if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+            return True
+
+        # Fix 12: Allow known CDN/streaming hostnames before the IP range block.
+        # Prevents false rejections when a trusted CDN resolves to a private-range IP.
+        base_host = ".".join(host.split(".")[-2:]) if "." in host else host
+        if host in TRUSTED_CDN_HOSTNAMES or base_host in TRUSTED_CDN_HOSTNAMES:
             return True
             
         # Block private IP ranges (RFC 1918) to prevent SSRF
@@ -925,13 +942,22 @@ def fetch_anidb_stream(title: str, episode: int = 1, audio: str = "sub") -> Opti
         if sys.stdout is not None:
             sys.stdout.write(f"[Erumi] AniDB fetch error: {type(e).__name__}: {str(e)}\n")
             sys.stdout.flush()
-        raise e
+        return None  # Fix 8: Don't re-raise — callers handle None gracefully; re-raising crashes request handler → 500 HTML → json() throws in browser
     return None
 
 
 def get_stream(title: str, episode: int = 1, audio: str = "sub") -> Dict[str, Any]:
+    # Fix 9: Hard 40-second deadline — without this, the waterfall can run for 90-300+ seconds,
+    # holding the browser's fetch open and keeping the loading spinner stuck forever.
+    _deadline = time.time() + 40
+
+    def _timed_out() -> bool:
+        return time.time() > _deadline
+
     # 1. Check AniDB First
-    anidb_stream = fetch_anidb_stream(title, episode, audio)
+    anidb_stream = None
+    if not _timed_out():
+        anidb_stream = fetch_anidb_stream(title, episode, audio)
     if anidb_stream:
         return {
             "success": True,
@@ -947,38 +973,45 @@ def get_stream(title: str, episode: int = 1, audio: str = "sub") -> Dict[str, An
         }
 
     # 2. Check AniNeko
-    streams = fetch_anineko_streams(title, episode, audio)
-    if not streams and ":" in title:
+    streams = []
+    if not _timed_out():
+        streams = fetch_anineko_streams(title, episode, audio)
+    if not streams and ":" in title and not _timed_out():
         prefix = title.split(":")[0].strip()
         if prefix:
             anidb_stream = fetch_anidb_stream(prefix, episode, audio)
             if anidb_stream:
                 streams = [anidb_stream]
-            else:
+            elif not _timed_out():
                 streams = fetch_anineko_streams(prefix, episode, audio)
 
-    if not streams and " - " in title:
+    if not streams and " - " in title and not _timed_out():
         prefix = title.split(" - ")[0].strip()
         if prefix:
             anidb_stream = fetch_anidb_stream(prefix, episode, audio)
             if anidb_stream:
                 streams = [anidb_stream]
-            else:
+            elif not _timed_out():
                 streams = fetch_anineko_streams(prefix, episode, audio)
 
-    if not streams:
+    if not streams and not _timed_out():
         # Search catalog for alternate titles (romaji, english, original)
         search_res = search_anime(title)
         results = search_res.get("data", {}).get("results", [])
         if results:
             for item in results[:3]:
+                if _timed_out():
+                    break
                 for alt_name in [item.get("name"), item.get("englishName"), item.get("title")]:
+                    if _timed_out():
+                        break
                     if alt_name and alt_name.lower() != title.lower():
                         anidb_stream = fetch_anidb_stream(alt_name, episode, audio)
                         if anidb_stream:
                             streams = [anidb_stream]
                             break
-                        streams = fetch_anineko_streams(alt_name, episode, audio)
+                        if not _timed_out():
+                            streams = fetch_anineko_streams(alt_name, episode, audio)
                         if streams:
                             break
                 if streams:
@@ -997,6 +1030,12 @@ def get_stream(title: str, episode: int = 1, audio: str = "sub") -> Dict[str, An
                     "url": first_stream["url"]
                 }]
             }
+        }
+
+    if _timed_out():
+        return {
+            "success": False,
+            "error": f"Stream resolution timed out for episode {episode}. Please try again."
         }
 
     return {
@@ -1481,18 +1520,30 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             except Exception:
                 origin = referer
 
+            proxy_headers = {
+                "User-Agent": UA,
+                "Referer": referer,
+                "Origin": origin,
+                "Accept": "*/*",
+            }
+
+            # Fix 13: Forward Range header so CDN resumes partial segments instead of
+            # restarting from byte 0 — this was causing mid-stream connection resets that
+            # manifested as fragLoadTimeOut after exactly 64 KB were received.
+            client_range = self.headers.get("Range", "")
+            if client_range:
+                proxy_headers["Range"] = client_range
+
             req = urllib.request.Request(
                 target_url,
-                headers={
-                    "User-Agent": UA,
-                    "Referer": referer,
-                    "Origin": origin,
-                    "Accept": "*/*",
-                }
+                headers=proxy_headers,
             )
 
             try:
-                with urllib.request.urlopen(req, timeout=20) as resp:
+                # Fix 13b: Increase upstream timeout to 60 s — AniDB CDN segments can be
+                # 400-500 KB and travel through a proxy hop; 20 s was too tight and caused
+                # the socket to close mid-chunk, giving HLS.js only 64 KB before timing out.
+                with urllib.request.urlopen(req, timeout=60) as resp:
                     content_type = resp.headers.get("Content-Type", "")
                     
                     is_playlist = (
@@ -1515,8 +1566,14 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                             self.end_headers()
                             self.wfile.write(out_bytes)
                             return
-                        except Exception:
-                            pass
+                        except Exception as m3u8_err:
+                            # Fix 11: Don't silently fall through — raw M3U8 sent as binary would cause CORS failures
+                            # on all segment requests. Return 500 so hls.js triggers proper NETWORK_ERROR recovery.
+                            if sys.stdout is not None:
+                                sys.stdout.write(f"[Erumi] M3U8 rewrite error for {target_url}: {m3u8_err}\n")
+                                sys.stdout.flush()
+                            self.send_json({"error": f"M3U8 rewrite failed: {m3u8_err}"}, status=500)
+                            return
 
                     # Binary stream segment (.ts video)
                     ct = content_type or "video/mp2t"
@@ -1535,7 +1592,14 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                             diff = len(first_chunk) - len(stripped_chunk)
 
                     content_length = resp.headers.get("Content-Length")
-                    self.send_response(200)
+                    upstream_status = resp.status  # 200 or 206 Partial Content
+
+                    # Fix 13c: Echo 206 Partial Content back to HLS.js when the CDN returns it,
+                    # and forward Content-Range so the browser knows where this chunk sits in the
+                    # full segment. Without this, a Range-resumed response was sent as 200 with
+                    # a mis-sized Content-Length, confusing HLS.js into thinking the segment was
+                    # truncated and triggering another fragLoadTimeOut.
+                    self.send_response(upstream_status)
                     self.send_header("Content-Type", ct)
                     if content_length:
                         try:
@@ -1543,12 +1607,19 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                             self.send_header("Content-Length", str(adjusted_length))
                         except ValueError:
                             pass
+                    content_range = resp.headers.get("Content-Range", "")
+                    if content_range:
+                        self.send_header("Content-Range", content_range)
                     self.send_header("Access-Control-Allow-Origin", "*")
                     self.send_header("Cache-Control", "no-store")
                     self.end_headers()
 
                     if stripped_chunk:
                         self.wfile.write(stripped_chunk)
+                        # Fix 13d: Flush after every write — Python's socket wfile buffers data
+                        # internally; without flush() the client (HLS.js) sees long pauses between
+                        # chunks, which pushed response time over the fragLoadingTimeOut threshold.
+                        self.wfile.flush()
 
                     try:
                         while True:
@@ -1556,6 +1627,7 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                             if not chunk:
                                 break
                             self.wfile.write(chunk)
+                            self.wfile.flush()
                     except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
                         pass
             except Exception as e:
@@ -1946,14 +2018,19 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             index_str = query.get("index", ["1"])[0].strip()
             index = int(index_str) if index_str.isdigit() else 1
             episode_str = query.get("episode", ["1"])[0].strip()
-            episode = int(episode_str) if episode_str.isdigit() else 1
+            # Fix 13: isdigit() fails for decimal episodes like "1.5" — use float-safe parser
+            try:
+                _ep_f = float(episode_str) if episode_str else 1.0
+                episode = int(_ep_f) if _ep_f == int(_ep_f) else _ep_f
+            except (ValueError, TypeError):
+                episode = 1
 
             if not title and not mode:
                 self.send_json({"error": "Missing 'query' or 'mode' parameter"}, status=400)
                 return
 
             cache_key = ("stream", title, mode, str(index), str(episode))
-            cached = get_cached_cli_output(cache_key, 1800)  # 30 minutes
+            cached = get_cached_cli_output(cache_key, 120)  # Fix 10: 2 min — CDN URLs expire in 3-6 min; 30 min caused stale URL serving
             if cached:
                 self.send_json(cached)
                 return
