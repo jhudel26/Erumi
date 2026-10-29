@@ -1,6 +1,6 @@
 <div align="center">
 
-# <img width="512" height="512" alt="android-chrome-512x512" src="https://github.com/user-attachments/assets/7de2fed0-6768-4d8e-bffe-114fcbd78f8f" />
+# <img width="192" height="192" alt="android-chrome-192x192" src="https://github.com/user-attachments/assets/93f010fc-1e66-482d-972b-71d8a7769e09" />
  Erumi Stream — Anime Streaming Platform
 
 **A modern, self-hosted anime streaming suite with full multi-season franchise support.**
