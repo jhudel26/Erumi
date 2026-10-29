@@ -170,8 +170,7 @@ graph TD
 - **Concurrency**: Python `threading` & `queue.Queue` for non-blocking CLI processes
 - **Security**: Built-in SSRF validation with strict CDN hostname whitelisting
 
-#### **CLI & Desktop Playback Engine**
-- **Desktop GUI (`main.py`)**: Uses the Node.js **Yorumi CLI** (`yorumi-cli.cjs`) to query streams and pipe playback into native **mpv**.
+#### **Web Server Playback Engine**
 - **Web Server (`web_server.py`)**: Pure Python implementation with direct GraphQL and HTTP scrapers (AllAnime, AniList, HiAnime) with no Node.js runtime needed in web mode.
 
 #### **Mobile & Build Tools**
