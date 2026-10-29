@@ -20,7 +20,7 @@
 
 <br>
 
-> A modern, cinema-grade anime streaming platform for Windows, Web, and Android — powered by the Yorumi engine. Ad-free, private, and blazing fast.
+> A modern, cinema-grade anime streaming platform for Windows, Web, and Android. Ad-free, private, and blazing fast.
 
 <br>
 
@@ -186,16 +186,15 @@ graph TD
 
 Make sure the following tools are installed on your machine:
 - **Python** (v3.10 or higher)
-- **Node.js** (v18 or higher) — required for the Yorumi CLI stream resolver
-- **mpv Media Player** — required for Desktop GUI playback (`main.py` / `Erumi.exe`)
+- **mpv Media Player** — optional, for Desktop GUI playback (`main.py` / `Erumi.exe`)
 - **Git**
 
 ### Installation
 
 1. **Clone the Repository**
    ```bash
-   git clone https://github.com/davenarchives/yorumi.git
-   cd "yorumi anime streaming"
+   git clone https://github.com/yourusername/erumi-anime-streaming.git
+   cd "erumi-anime-streaming"
    ```
 
 2. **Install Python Dependencies**
@@ -273,7 +272,7 @@ Open and compile `erumi_installer.iss` using [Inno Setup](https://jrsoftware.org
 ## 📁 Project Structure
 
 ```bash
-yorumi anime streaming/
+erumi-stream/
 ├── main.py                  # Standalone Desktop GUI (Erumi.exe)
 ├── server_app.py            # Server Controller App (ErumiServer.exe)
 ├── web_server.py            # High-performance HTTP Server, REST API & HLS Proxy
