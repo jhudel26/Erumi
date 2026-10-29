@@ -1,179 +1,139 @@
 <div align="center">
 
-# <img width="192" height="192" alt="android-chrome-192x192" src="https://github.com/user-attachments/assets/962f1f46-a988-4021-9fa0-f41ad07a13e6" />
+# 🌌 Erumi Stream — Anime Streaming Platform
 
- Erumi Stream — Anime Streaming Platform
+**A modern, self-hosted anime streaming suite with full multi-season franchise support.**
 
-**A modern, zero-dependency, self-hosted anime streaming suite.**
-
-*Search → Select → Stream in 1080p — right from your desktop, browser, or any device on your Wi-Fi.*
+*Search ➔ Select ➔ Stream in 1080p — right from your desktop, browser, or Android app on your Wi-Fi.*
 
 ---
 
-[![Version](https://img.shields.io/badge/version-2.7.0-blue.svg?style=for-the-badge)](https://github.com/davenarchives/Yorumi)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Web%20%7C%20LAN%20%7C%20PWA-teal.svg?style=for-the-badge)]()
-[![License](https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge)]()
-[![No Dependencies](https://img.shields.io/badge/standalone-No%20Python%20%2F%20Node%20Needed-purple.svg?style=for-the-badge)]()
+[![Version](https://img.shields.io/badge/version-2.8.2-teal.svg?style=for-the-badge)](https://github.com/jhudel26/Erumi)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Web%20%7C%20Android%20%7C%20LAN%20%7C%20PWA-0d9488.svg?style=for-the-badge)](https://github.com/jhudel26/Erumi)
+[![License](https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge)](https://github.com/jhudel26/Erumi/blob/main/LICENSE)
+[![Zero Dependencies](https://img.shields.io/badge/standalone-No%20Node%20Required-blueviolet.svg?style=for-the-badge)]()
 
 </div>
 
 ---
 
-## 📖 What is Erumi?
+## 🎬 What is Erumi?
 
-**Erumi** is a full-featured anime streaming platform with a native desktop controller, an embedded high-performance HLS proxy server, and a responsive cinema-style web application.
+**Erumi** is a clean, feature-rich anime streaming application that pairs a high-performance Python streaming backend and HLS reverse proxy with a cinema-style dark UI web application and native Android support.
 
-It operates in **100% Standalone Mode** without requiring Python, Node.js, or external CLI installations on the client's machine.
-
-| Distribution Mode | How it Works | Primary Use Case |
+| Deployment / Target | Description | Primary Use Case |
 |---|---|---|
-| 📦 **Windows Setup Installer** (`ErumiStream_Setup_v2.7.0.exe`) | Standard Windows installation wizard with desktop shortcut, Start Menu entry, and auto-start option. | General users & friends. |
-| 🗜️ **Portable Archive** (`ErumiStream_Portable_Windows.zip`) | Zero-install portable folder. Extract and double-click `ErumiServer.exe`. | Flash drives, VMs, clean Windows PCs. |
-| 🌐 **LAN & PWA Web Server** | Host locally on port 3000 and stream to phones, tablets, Smart TVs, and Android devices. | Home media & multi-device streaming. |
+| 🌐 **Web Server & LAN Hub** | Run `python web_server.py` on your PC. Streams to any browser on your local network. | Desktop, laptops, home entertainment. |
+| 📱 **Android App (Capacitor)** | Native Android build with fullscreen landscape auto-rotation and portrait lock. | Mobile phones and tablets. |
+| 🖥️ **Desktop Controller** | Run `server_app.py` or `main.py` with MPV native player support. | Local playback on desktop PC. |
 
 **No accounts. No subscriptions. No ads. Just anime in 1080p.**
 
 ---
 
-🖼️ Screenshots  Desktop & Web Interface  
-<table>   
-<tr>     
-<td align="center">       
-<img width="1641" height="881" alt="Screenshot 2026-08-29 124810" src="https://github.com/user-attachments/assets/35e9e6cc-2821-474a-9434-f32b6316d174" />
-</td>     
-<td align="center">       
-<img width="1450" height="906" alt="Screenshot 2026-08-29 124829" src="https://github.com/user-attachments/assets/1f28c118-9ad0-46c4-b249-39b62a0460fa" />
-</td>
-<td align="center">
-<img width="1584" height="982" alt="Screenshot 2026-08-29 132125" src="https://github.com/user-attachments/assets/436ecfa7-9031-4520-99a6-b4ce32def3d3" />
-</td>   
-</tr>   
-<tr>     
-<td align="center">
-<strong>Home / Browse</strong>
-</td>     
-<td align="center"><strong>Recommended / Latest released</strong></td>    
-<td align="center"><strong>Video Player</strong></td>   
-</tr> 
-</table>  
-More Screenshots  
-<table>   
-<tr>     
-<td align="center">      
-<img width="1549" height="975" alt="Screenshot 2026-08-29 125008" src="https://github.com/user-attachments/assets/167d858d-fc10-4d45-84a9-50c0f70b4818" />
-</td>     
-<td align="center">       
-<img width="1550" height="982" alt="Screenshot 2026-08-29 124841" src="https://github.com/user-attachments/assets/142f6d1e-7989-46fd-9418-426ede8b46f8" />
-</td>    
-<td align="center">     
-<img width="410" height="884" alt="Screenshot 2026-08-29 132257" src="https://github.com/user-attachments/assets/ae344e4a-16d8-41c2-aa5c-a719a238c663" />
-</td>
-<td  align="center"><img width="415" height="901" alt="Screenshot 2026-08-29 125250" src="https://github.com/user-attachments/assets/4d82d417-cc98-477a-85d8-bc5446b39136" /></td>
-</tr>
-<tr>    
-<td align="center"><strong>Search</strong></td>     
-<td align="center"><strong>History</strong></td>    
-<td align="center"><strong>Mobile / PWA</strong></td>
-<td align="center"><strong>Mobile / PWA</strong></td>
-</tr>
-</table>
-
-
 ## ✨ Key Features
 
 - ⚡ **Multi-Tier Native Stream Resolvers**:
-  - **AniDB Engine** (`anidb.app`): Primary high-bitrate adaptive 1080p HLS stream extractor.
-  - **AniNeko Engine** (`anineko.to` / `vivibebe.site`): Intelligent TV series prioritization over recaps/OVAs.
-  - **AllAnime GraphQL**: Fallback episode indexer and multi-server resolver.
-- 🎬 **Cinema Web Player**: Custom HTML5 player powered by **Hls.js** with subtitle toggling (`Sub`/`Dub`), auto-quality switching, auto-next episode, and theater mode.
-- 📡 **LAN Wi-Fi Streaming & QR Code**: Share your stream across your home Wi-Fi. Scan the QR code with your phone or tablet to start watching instantly.
-- 🖼️ **Rich Metadata & Banners**: High-resolution banners, posters, studios, release schedules, and community scores pulled via **AniList GraphQL API**.
+  - **HiAnime Engine** (`hianime.to`): Direct episode resolution with multi-server and Sub/Dub streams.
+  - **AniDB Engine** (`anidb.app`): High-bitrate adaptive 1080p HLS stream extraction.
+  - **AniNeko Engine** (`anineko.to`): Intelligent TV series prioritization over recaps/OVAs.
+- 🔁 **Full Multi-Season & Franchise Switcher**:
+  - Automatically captures and links **all seasons, cours, sequels, prequels, and movies** using a high-speed AniList GraphQL batch resolver.
+  - Responsive dropdown with complete title visibility on mobile and desktop.
+  - Filtered to canonical seasons (`TV`, `TV_SHORT`, `ONA`, `MOVIE`, `SPECIAL`).
+- 📱 **Mobile & Android Optimized**:
+  - **Clean 2-Row Drawer Header**: Full-width season dropdown that never gets cut off or truncated on narrow mobile screens.
+  - **Smart Fullscreen Rotation**: Locked in portrait for browsing; automatically rotates to landscape only when entering video player fullscreen.
+- 🎛️ **Player Controls & Polish**:
+  - **Sub / Dub Quick Toggle Pill**: One-click audio switching without losing playback position.
+  - **Playback Speed Selector**: 0.5x, 0.75x, 1x, 1.25x, 1.5x, 2x controls.
+  - **Smart Skip Intro**: 85-second intelligent skip button.
+  - **Per-Episode Watch Progress Bars**: Remembers exact watch progress and resume points.
+  - **In-Player Error Recovery Overlay**: In-place reload/retry without leaving the video player.
+- 🏷️ **Dynamic Genre Filter Chips**:
+  - 13 curated genres (Action, Romance, Fantasy, Comedy, Sci-Fi, Slice of Life, etc.).
 - 🛡️ **Built-in HLS Reverse Proxy**:
-  - Automatically bypasses CORS and ISP stream throttling.
-  - Resolves encrypted `#EXT-X-KEY` and `#EXT-X-MAP` initialization segments.
-  - Strips disguised PNG headers (`\x89PNG...`) on-the-fly for players.
-  - Sandboxed SSL context support for clean Windows VMs.
-- 📱 **PWA & Android Support**: Install directly as a Progressive Web App (PWA) to your home screen or build as an APK via Capacitor.
+  - Bypasses CORS and ISP video stream blocks.
+  - Transparently handles encrypted `#EXT-X-KEY` and initialization segments.
+  - Automatically strips disguised PNG headers (`\x89PNG...`) on-the-fly.
 
 ---
 
-## 🗂️ Project Structure
+## 📂 Project Structure
 
 ```
-Erumi anime streaming/
+Erumi/
+├── web_server.py                # Python HTTP Server, HLS Proxy & Scraping Engine (v2.8.2)
+├── server_app.py                # Desktop GUI Server Launcher
+├── main.py                      # Desktop app with native MPV player integration
+├── start_web.bat                # 1-Click launcher script for Windows
+├── erumi_config.json            # Configuration file
+├── requirements.txt             # Python dependencies
 │
-├── 📄 main.py                      # Desktop GUI app (plays directly in mpv)
-├── 📄 web_server.py                # Standalone HTTP Server, HLS Proxy, and Native Scraping Engine
-├── 📄 server_app.py                # CustomTkinter GUI Server Launcher (ErumiServer.exe source)
+├── web/                         # Frontend Single Page Application
+│   ├── index.html               # Main cinema browsing & streaming UI
+│   ├── style.css                # Responsive glassmorphic dark theme
+│   ├── app.js                   # Frontend controller (v2.8.2)
+│   ├── sw.js                    # PWA Service Worker
+│   ├── hls.min.js               # Bundled HLS.js player
+│   └── feather.min.js           # Feather icons library
 │
-├── 📁 web/                         # Web frontend (SPA served by web_server.py)
-│   ├── index.html                  # Main cinema browsing & streaming UI
-│   ├── style.css                   # Glassmorphic dark-theme stylesheet
-│   ├── app.js                      # Core frontend application logic (v2.7.0)
-│   ├── sw.js                       # PWA Service Worker (API cache-bypassing)
-│   ├── hls.min.js                  # Bundled Hls.js library
-│   ├── feather.min.js              # Bundled icon library
-│   ├── offline.html                # Offline status page
-│   └── site.webmanifest            # PWA manifest configuration
+├── android/                     # Capacitor Native Android project
+│   ├── app/src/main/            # Android source & AndroidManifest.xml
+│   └── build.gradle             # Android build configuration
 │
-├── 📁 favicon/                     # Icons, logos, and mascot assets
-├── 📁 installer_output/            # Compiled Inno Setup installer (.exe)
-│
-├── 📄 erumi_installer.iss          # Inno Setup 6 compiler script
-├── 📄 build_installer.bat          # 1-Click build script for Inno Setup installer
-├── 📄 build_server.bat             # PyInstaller script for ErumiServer.exe
-├── 📄 build.bat                    # PyInstaller script for Erumi.exe (mpv GUI)
-├── 📄 start_web.bat                # Direct Python runner (development mode)
-├── 📄 erumi_config.json            # Server & playback configuration
-└── 📄 requirements.txt             # Python dependencies (for developers)
+├── favicon/                     # Logos, posters, and app icons
+└── README.md                    # Documentation
 ```
 
 ---
 
-## 🚀 Quick Start (For End Users)
+## 🚀 Quick Start
 
-### Using the Windows Installer *(Recommended)*
-1. Download **`ErumiStream_Setup_v2.7.0.exe`** from the `installer_output/` folder.
-2. Run the installer and complete the setup wizard.
-3. Launch **Erumi Stream** from your Desktop or Start Menu.
-4. Your browser will automatically open to `http://localhost:3000`.
+### 1. Prerequisites
+- **Python 3.10+** installed (ensure *"Add Python to PATH"* is checked)
+- A modern web browser (Chrome, Edge, Firefox, Brave, Safari)
 
----
-
-## 🛠️ Developer Setup & Building from Source
-
-### Prerequisites
-- **Python 3.10+** (Check *"Add Python to PATH"* during installation)
-- **Inno Setup 6** (Optional &mdash; only needed for compiling the installer)
-
-### 1. Install Dependencies
+### 2. Setup & Installation
 ```bash
-git clone https://github.com/YOUR_USERNAME/yorumi-anime-streaming.git
-cd "yorumi anime streaming"
+# Clone the repository
+git clone https://github.com/jhudel26/Erumi.git
+cd Erumi
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Run Development Server
+### 3. Run the Server
 ```bash
-python server_app.py
+python web_server.py
 ```
-*Or simply double-click `start_web.bat`.*
+*Or double-click `start_web.bat` on Windows.*
 
-### 3. Build Standalone Binaries & Installer
-- **Build Server Executable (`dist/ErumiServer.exe`)**:
-  ```bash
-  build_server.bat
-  ```
-- **Build Full Inno Setup Installer (`installer_output/ErumiStream_Setup_v2.7.0.exe`)**:
-  ```bash
-  build_installer.bat
-  ```
+The server will start on port `3000`:
+- **Local Browser:** `http://localhost:3000`
+- **Phone / Tablet / Smart TV (Same Wi-Fi):** `http://<YOUR_LOCAL_IP>:3000`
+
+---
+
+## 📱 Building the Android APK
+
+The mobile app is built using **Capacitor**:
+
+```bash
+# Install dependencies
+npm install
+
+# Sync web assets to Android
+npx cap sync android
+
+# Open in Android Studio to build APK
+npx cap open android
+```
 
 ---
 
 ## ⚙️ Configuration (`erumi_config.json`)
-
-The server configuration can be customized in `erumi_config.json` or via the in-app **Settings** modal:
 
 ```json
 {
@@ -190,42 +150,28 @@ The server configuration can be customized in `erumi_config.json` or via the in-
   "cache": {
     "enabled": true,
     "search_ttl_seconds": 3600,
-    "episodes_ttl_seconds": 600,
-    "metadata_ttl_seconds": 43200
+    "episodes_ttl_seconds": 300,
+    "metadata_ttl_seconds": 86400
   }
 }
 ```
 
 ---
 
-## 🔍 Built-In Diagnostics
+## 🛠️ Diagnostics & Health Check
 
-If you encounter any streaming or network issues on a restricted network or VM:
-- Navigate to: **`http://localhost:3000/api/debug-stream?query=Solo+Leveling&episode=1`**
-- The server will perform a live diagnostic check on provider resolution, HLS headers, and proxy status.
-
----
-
-## 🧰 Tech Stack
-
-| Layer | Technology |
-|---|---|
-| **Server Engine** | Python 3 · `ThreadingHTTPServer` · Multi-source Scraper Pipeline |
-| **Frontend UI** | Modern Vanilla JavaScript · HTML5 Canvas · Feather Icons |
-| **Video Engine** | HLS.js (Adaptive Bitrate Streaming) · Custom Native Proxy |
-| **Metadata** | AniList GraphQL API |
-| **Desktop Shell** | CustomTkinter · Tkinter · DarkDetect |
-| **Packaging & Installer**| PyInstaller · Inno Setup 6 (LZMA2 Ultra Compression) |
+- **Server Status & Version:** `http://localhost:3000/api/status`
+- **Stream Diagnostic Probe:** `http://localhost:3000/api/debug-stream?query=Solo+Leveling&episode=1`
 
 ---
 
-## 📜 License & Disclaimer
+## 📄 License & Disclaimer
 
 - Distributed under the **MIT License**.
-- **Educational Disclaimer**: This project does not host or store copyrighted media files. All content is resolved in real-time from publicly available third-party sources.
+- **Educational Disclaimer**: This project does not host or store copyrighted media files. All streams are resolved dynamically in real-time from publicly available web sources.
 
 ---
 
 <div align="center">
-Made with 🌸 by <strong>Jhudel</strong> · Erumi Stream v2.7.0
+Built with ❤️ by <strong>Jhudel</strong> • Erumi Stream v2.8.2
 </div>

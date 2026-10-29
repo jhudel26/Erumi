@@ -1,4 +1,4 @@
-const CACHE_NAME = 'erumi-pwa-v11';
+const CACHE_NAME = 'erumi-pwa-v18';
 const METADATA_CACHE = 'erumi-metadata-v3';
 const OFFLINE_PAGE = '/offline.html';
 
@@ -62,13 +62,17 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
-  // Skip all API routes, video proxy streams, HLS playlists/segments, and external GraphQL
+  // Skip all API routes, video proxy streams, HLS playlists/segments, subtitle tracks, and live JS/CSS version requests
   if (
     url.pathname.startsWith('/api/') ||
     url.hostname.includes('graphql') ||
     url.pathname.endsWith('.m3u8') ||
     url.pathname.endsWith('.ts') ||
-    url.pathname.includes('/stream')
+    url.pathname.endsWith('.vtt') ||
+    url.pathname.endsWith('.js') ||
+    url.pathname.endsWith('.css') ||
+    url.pathname.includes('/stream') ||
+    url.searchParams.has('v')
   ) {
     return;
   }

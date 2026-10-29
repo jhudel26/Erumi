@@ -579,7 +579,16 @@ class YorumiGUI:
                     **hidden_subprocess_kwargs(),
                 )
                 self.cli_process = process
-                output, error = process.communicate()
+                # Fix 14: Without a timeout, process.communicate() can block forever if the CLI hangs,
+                # locking the GUI with all buttons permanently disabled.
+                try:
+                    output, error = process.communicate(timeout=90)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    output, error = process.communicate()
+                    self.output_queue.put(("ERROR", "CLI process timed out after 90 seconds and was terminated."))
+                    self.output_queue.put(("DONE", None))
+                    return
 
                 if process.returncode not in (0, None) and not (output or "").strip():
                     msg = (error or "").strip() or f"CLI exited with code {process.returncode}"
@@ -905,10 +914,18 @@ class YorumiGUI:
             return "https://www.youtube.com/"
         if "mp4upload" in host:
             return "https://www.mp4upload.com/"
+        if "dramahot.top" in host:
+            return "https://zokoanime.video/"
+        if "zokoanime.video" in host:
+            return "https://hianime.at/"
+        if "megaplay.buzz" in host:
+            return "https://hianime.at/"
         if "vivibebe.site" in host or "ibyteimg.com" in host:
             return "https://vivibebe.site/"
         if host in ("127.0.0.1", "localhost"):
             return "https://vivibebe.site/"
+        if stream and stream.get("provider") == "hianime":
+            return "https://zokoanime.video/"
         if stream and stream.get("provider") in ("allmanga",):
             return "https://allmanga.to/"
         if stream and stream.get("provider") == "anineko":

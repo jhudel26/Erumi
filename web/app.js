@@ -1,11 +1,14 @@
 /**
- * Erumi Web Application Frontend Core - Teal Cinema Edition v2.7.2
- * Capacitor/APK Server Connect + Jellyfin Settings Dashboard
+ * Erumi Web Application Frontend Core - Teal Cinema Edition v2.7.8
+ * Capacitor/APK Server Connect + Dual Subtitle Engine (Unified Window & Fullscreen)
  */
-console.log('[Erumi] app.js v2.7.2 loaded — HLS fragment timeout fix active');
+console.log('[Erumi] app.js v2.8.2 loaded — Fullscreen subtitle engine active');
 
 class ErumiApp {
   constructor() {
+    window.app = this;
+    window.onSubtitleChange = (val) => this.onSubtitleChange(val);
+
     // Detect Capacitor (Android/iOS APK) - strictly native container
     const isCapacitor = !!(
       window.Capacitor ||
@@ -145,12 +148,69 @@ class ErumiApp {
 
   initFullscreenOrientation() {
     ['fullscreenchange', 'webkitfullscreenchange'].forEach((event) => {
-      document.addEventListener(event, () => this.handleFullscreenOrientationChange());
+      document.addEventListener(event, () => {
+        this.handleFullscreenOrientationChange();
+        this.syncSubtitleDisplayMode();
+      });
     });
 
     if (this.videoPlayer) {
-      this.videoPlayer.addEventListener('webkitbeginfullscreen', () => this.lockLandscapeForVideo());
-      this.videoPlayer.addEventListener('webkitendfullscreen', () => this.unlockLandscapeForVideo());
+      // Intercept video.requestFullscreen so clicking native player controls puts the entire container
+      // (including the subtitles overlay) into fullscreen mode!
+      const container = document.getElementById('videoContainer');
+      const origVideoFs = this.videoPlayer.requestFullscreen || this.videoPlayer.webkitRequestFullscreen;
+      this.videoPlayer.requestFullscreen = function(options) {
+        if (container && container.requestFullscreen) {
+          return container.requestFullscreen(options);
+        } else if (container && container.webkitRequestFullscreen) {
+          return container.webkitRequestFullscreen(options);
+        }
+        return origVideoFs ? origVideoFs.call(this, options) : Promise.reject();
+      };
+      if (this.videoPlayer.webkitRequestFullscreen) {
+        this.videoPlayer.webkitRequestFullscreen = this.videoPlayer.requestFullscreen;
+      }
+
+      this.videoPlayer.addEventListener('webkitbeginfullscreen', () => {
+        this.lockLandscapeForVideo();
+        this.syncSubtitleDisplayMode();
+      });
+      this.videoPlayer.addEventListener('webkitendfullscreen', () => {
+        this.unlockLandscapeForVideo();
+        this.syncSubtitleDisplayMode();
+      });
+    }
+  }
+
+  syncSubtitleDisplayMode() {
+    if (!this.videoPlayer) return;
+    const isDirectVideoFs = (document.fullscreenElement === this.videoPlayer) ||
+                            (document.webkitFullscreenElement === this.videoPlayer) ||
+                            (this.videoPlayer && this.videoPlayer.webkitDisplayingFullscreen);
+
+    const textTracks = this.videoPlayer.textTracks;
+    const activeIdx = this.activeSubtitleTrackIndex;
+
+    if (isDirectVideoFs && activeIdx >= 0) {
+      // 1. In direct <video> fullscreen: browser only shows native cues
+      if (this.videoSubtitlesOverlay) {
+        this.videoSubtitlesOverlay.style.display = 'none';
+      }
+      if (textTracks) {
+        for (let i = 0; i < textTracks.length; i++) {
+          textTracks[i].mode = (i === activeIdx) ? 'showing' : 'disabled';
+        }
+      }
+    } else {
+      // 2. In windowed mode OR container fullscreen:
+      // Custom overlay (#videoSubtitlesOverlay) handles rendering.
+      // Set native text tracks to 'hidden' (cues accessible to JS, but NOT rendered natively)
+      if (textTracks) {
+        for (let i = 0; i < textTracks.length; i++) {
+          textTracks[i].mode = 'hidden';
+        }
+      }
+      this.updateSubtitleOverlay();
     }
   }
 
@@ -247,6 +307,12 @@ class ErumiApp {
     this.watchQualityBadge = document.getElementById('watchQualityBadge');
     this.watchSaveText = document.getElementById('watchSaveText');
     this.autoNextCheck = document.getElementById('autoNextCheck');
+    this.subtitleSelect = document.getElementById('subtitleSelect');
+    this.subtitleSelectWrap = document.getElementById('subtitleSelectWrap');
+    this.videoSubtitlesOverlay = document.getElementById('videoSubtitlesOverlay');
+    this.subtitleCues = [];
+    this.currentSubtitles = [];
+    this.activeSubtitleTrackIndex = -1;
 
     // Watch Sidebar
     this.sidebarEpCount = document.getElementById('sidebarEpCount');
@@ -298,10 +364,18 @@ class ErumiApp {
       });
     }
 
-    // Save playback progress on timeupdate
+    // Save playback progress on timeupdate & synchronize WebVTT subtitle overlay
     this.videoPlayer.addEventListener('timeupdate', () => {
       this.saveCurrentPlaybackProgress();
+      this.updateSubtitleOverlay();
     });
+
+    // Subtitle dropdown change event listener
+    if (this.subtitleSelect) {
+      this.subtitleSelect.addEventListener('change', (e) => {
+        this.onSubtitleChange(e.target.value);
+      });
+    }
 
     // Auto next on video end
     this.videoPlayer.addEventListener('ended', () => {
@@ -392,11 +466,17 @@ class ErumiApp {
   buildAnimeApiParams(anime, extra = {}) {
     const params = new URLSearchParams({ ...extra });
     const q = (anime.title || anime.name || anime.englishName || anime.searchQuery || '').trim();
-    const idx = String(anime.index || 1);
+    // When querying a specific anime directly by title, do NOT pass a visual card offset from previous search grids,
+    // as that offsets into a freshly searched title list on the backend.
+    const idx = String(anime.mode === 'search' && !anime.title ? (anime.index || 1) : 1);
+    const audio = document.getElementById('settingAudio')?.value || 'sub';
 
     params.set('query', q);
     params.set('index', idx);
     params.set('mode', 'direct');
+    if (!params.has('audio')) {
+      params.set('audio', audio);
+    }
     return params;
   }
 
@@ -574,21 +654,63 @@ class ErumiApp {
     return art.poster;
   }
 
-  getSeasonNumber(title) {
-    if (!title) return 1;
+  getSeasonAndPart(title) {
+    if (!title) return { season: 1, part: null };
     const t = title.toLowerCase();
-    if (/\b(season\s*4|4th\s*season|iv|s4)\b/.test(t)) return 4;
-    if (/\b(season\s*3|3rd\s*season|iii|s3)\b/.test(t)) return 3;
-    if (/\b(season\s*2|2nd\s*season|ii|s2|part\s*2|two)\b/.test(t)) return 2;
-    if (/\b(season\s*1|1st\s*season|i|s1|part\s*1|one)\b/.test(t)) return 1;
-    return 1;
+    let season = null;
+    let part = null;
+
+    const mSeason = t.match(/\b(?:season|s)\s*([0-9]{1,2})\b/);
+    if (mSeason) {
+      season = parseInt(mSeason[1], 10);
+    } else {
+      const mNth = t.match(/\b([0-9]{1,2})(?:st|nd|rd|th)\s+season\b/);
+      if (mNth) {
+        season = parseInt(mNth[1], 10);
+      } else {
+        const mRoman = t.match(/\bseason\s+(i|ii|iii|iv|v|vi|vii|viii|ix|x)\b/);
+        if (mRoman) {
+          const romanMap = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10 };
+          season = romanMap[mRoman[1]] || null;
+        }
+      }
+    }
+
+    if (season === null) {
+      if (t.includes('stone wars')) season = 2;
+      else if (t.includes('new world')) season = 3;
+      else if (t.includes('science future')) season = 4;
+      else if (t.includes('shibuya incident') || t.includes('entertainment district')) season = 2;
+      else if (t.includes('swordsmith village')) season = 3;
+      else if (t.includes('hashira training')) season = 4;
+      else if (t.includes('thousand-year blood war')) season = 2;
+      else if (t.includes('final season')) season = 4;
+    }
+
+    const mPart = t.match(/\b(?:part|cour)\s*([0-9]{1,2})\b/);
+    if (mPart) {
+      part = parseInt(mPart[1], 10);
+    } else {
+      const mPartRoman = t.match(/\b(?:part|cour)\s+(i|ii|iii|iv|v|vi|vii|viii|ix|x)\b/);
+      if (mPartRoman) {
+        const romanMap = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10 };
+        part = romanMap[mPartRoman[1]] || null;
+      }
+    }
+
+    return { season: season || 1, part: part };
+  }
+
+  getSeasonNumber(title) {
+    return this.getSeasonAndPart(title).season;
   }
 
   pickBestMediaCandidate(title, year, mediaList) {
     if (!mediaList || mediaList.length === 0) return null;
     if (mediaList.length === 1) return mediaList[0];
 
-    const targetSeason = this.getSeasonNumber(title);
+    const targetInfo = this.getSeasonAndPart(title);
+    const targetSeason = targetInfo.season;
     let best = mediaList[0];
     let bestScore = -999;
 
@@ -596,9 +718,10 @@ class ErumiApp {
       let score = 0;
       const tEng = (m.title?.english || '').toLowerCase();
       const tRom = (m.title?.romaji || '').toLowerCase();
-      const mSeasonEng = this.getSeasonNumber(tEng);
-      const mSeasonRom = this.getSeasonNumber(tRom);
-      const mSeason = mSeasonEng !== 1 ? mSeasonEng : mSeasonRom;
+      const mInfoEng = this.getSeasonAndPart(tEng);
+      const mInfoRom = this.getSeasonAndPart(tRom);
+      const mSeason = mInfoEng.season !== 1 ? mInfoEng.season : mInfoRom.season;
+      const mPart = mInfoEng.part || mInfoRom.part;
 
       if (targetSeason === mSeason) {
         score += 50;
@@ -606,6 +729,13 @@ class ErumiApp {
         score -= 40;
       } else if (targetSeason === 1 && mSeason > 1) {
         score -= 40;
+      } else if (targetSeason !== mSeason) {
+        score -= 60;
+      }
+
+      if (targetInfo.part && mPart) {
+        if (targetInfo.part === mPart) score += 40;
+        else score -= 60;
       }
 
       const mYear = m.seasonYear;
@@ -869,6 +999,10 @@ class ErumiApp {
     this.videoPlayer.pause();
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
+    // Hide genre chips row in history view
+    const genreRow = document.getElementById('genreChipsRow');
+    if (genreRow) genreRow.style.display = 'none';
+
     this.currentMode = 'history';
     this.setActiveNav('history');
     this.sectionTitle.textContent = 'Watch History';
@@ -1123,6 +1257,8 @@ class ErumiApp {
     this.watchAnimeDesc.textContent = anime.name ? `Original title: ${anime.name}. High quality stream with sub/dub options.` : 'Instant stream via Yorumi backend.';
 
     this.updateSaveButtonState();
+    this.syncSubDubButton();
+    this.loadFranchiseSwitcher(anime);
 
     // Fix 6: Start episode fetch immediately — don't block on metadata (AniList can be slow/rate-limited)
     // Both run in parallel; meta is applied to the episode filter once both settle.
@@ -1187,12 +1323,13 @@ class ErumiApp {
           maxAired = meta.nextAiringEpisode.episode - 1;
         } else if (meta && meta.status === 'NOT_YET_RELEASED') {
           maxAired = 0;
-        } else if (anime && typeof anime.episodes === 'number' && anime.episodes > 0 && anime.episodes < validEps.length) {
-          maxAired = anime.episodes;
         }
 
         if (maxAired !== null && maxAired >= 0) {
-          validEps = validEps.filter(ep => ep.numVal <= (maxAired + 0.5));
+          const filtered = validEps.filter(ep => ep.numVal <= (maxAired + 0.5));
+          if (filtered.length > 0 || (meta && meta.status === 'NOT_YET_RELEASED')) {
+            validEps = filtered;
+          }
         }
 
         // Guard: if user navigated to a different anime while this fetch was in-flight, discard
@@ -1201,9 +1338,7 @@ class ErumiApp {
         this.currentEpisodes = validEps;
 
         if (this.currentEpisodes.length === 0) {
-          const nextMsg = meta && meta.nextAiringEpisode ? ` (Next episode airs soon)` : '';
-          this.sidebarEpisodesList.innerHTML = `<p style="color: var(--warning); padding: 16px;">This anime has not aired any episodes yet${nextMsg}.</p>`;
-          this.sidebarEpCount.textContent = '0 episodes available';
+          this.showUpcomingState(anime.title, meta ? meta.nextAiringEpisode : null);
           return;
         }
 
@@ -1225,8 +1360,7 @@ class ErumiApp {
         this.renderSidebarEpisodeList(this.currentEpisodes);
         this.playEpisode(epIdx, resumeTime);
       } else {
-        this.sidebarEpisodesList.innerHTML = `<p style="color: var(--danger); padding: 16px;">No available episodes found for this title.</p>`;
-        this.sidebarEpCount.textContent = '0 episodes';
+        this.showUpcomingState(anime.title, meta ? meta.nextAiringEpisode : null);
       }
     } catch (e) {
       this.sidebarEpisodesList.innerHTML = `<p style="color: var(--danger); padding: 16px;">Episode fetch error: ${e.message}</p>`;
@@ -1234,16 +1368,26 @@ class ErumiApp {
     }
   }
 
-  renderSidebarEpisodeList(episodes, activeRangeStart = 1, rangeSize = 50) {
-    this.renderRangeTabs(episodes.length, activeRangeStart, rangeSize);
+  renderSidebarEpisodeList(episodes, activeChunkIndex = (this._currentEpChunk || 0), chunkSize = 50) {
+    if (!episodes || episodes.length === 0) {
+      this.sidebarEpisodesList.innerHTML = '<p style="color: var(--warning); padding: 16px;">No episodes available.</p>';
+      this.epRangeTabs.innerHTML = '';
+      return;
+    }
 
-    const filtered = episodes.filter(ep => {
-      const num = parseInt(ep.episodeNumber, 10);
-      return num >= activeRangeStart && num < activeRangeStart + rangeSize;
-    });
+    this._currentEpChunk = activeChunkIndex;
+    const total = episodes.length;
+    this.renderRangeTabs(episodes, activeChunkIndex, chunkSize);
+
+    let displayEps = episodes;
+    if (total > chunkSize) {
+      const startIdx = activeChunkIndex * chunkSize;
+      const endIdx = Math.min(startIdx + chunkSize, total);
+      displayEps = episodes.slice(startIdx, endIdx);
+    }
 
     this.sidebarEpisodesList.innerHTML = '';
-    filtered.forEach((ep) => {
+    displayEps.forEach((ep) => {
       const num = ep.episodeNumber;
       const key = `${this.currentAnime.title}_ep_${num}`;
       const isWatched = !!this.history[key];
@@ -1255,9 +1399,17 @@ class ErumiApp {
       card.id = `epCard_${num}`;
 
       let statusTag = 'Available';
-      if (isUnavailable) statusTag = 'Unavailable / Not Aired';
+      if (isUnavailable) statusTag = 'Stream Error';
       else if (isCurrent) statusTag = 'Now Playing';
       else if (isWatched) statusTag = 'Watched';
+
+            // Progress bar from watch history
+      const histEntry = this.history[key];
+      let progressBarHtml = '';
+      if (histEntry && histEntry.duration > 0) {
+        const pct = Math.min(100, Math.round((histEntry.currentTime / histEntry.duration) * 100));
+        progressBarHtml = `<div class="ep-progress-bar-track"><div class="ep-progress-bar-fill" style="width:${pct}%"></div></div>`;
+      }
 
       card.innerHTML = `
         <div class="sidebar-ep-left">
@@ -1272,12 +1424,13 @@ class ErumiApp {
             <div class="sound-wave">
               <span></span><span></span><span></span>
             </div>
-          ` : `<i data-feather="${isUnavailable ? 'alert-circle' : 'play'}" style="width: 16px; height: 16px; color: ${isUnavailable ? 'var(--danger)' : 'var(--text-dim)'};"></i>`}
+          ` : `<i data-feather="${isUnavailable ? 'alert-circle' : 'play'}" style="width: 16px; height: 16px; color: ${isUnavailable ? 'var(--danger)' : 'var(--text-dim)'}"></i>`}
         </div>
-      `;
+        ${progressBarHtml}
+      `;;
 
       card.addEventListener('click', () => {
-        const epIdx = this.currentEpisodes.findIndex(e => e.episodeNumber === num);
+        const epIdx = this.currentEpisodes.findIndex(e => String(e.episodeNumber) === String(num));
         if (epIdx >= 0) this.playEpisode(epIdx);
       });
 
@@ -1287,32 +1440,44 @@ class ErumiApp {
     if (window.feather) feather.replace();
   }
 
-  renderRangeTabs(total, currentStart, size) {
+  renderRangeTabs(episodes, activeChunkIndex, size) {
     this.epRangeTabs.innerHTML = '';
+    const total = Array.isArray(episodes) ? episodes.length : (typeof episodes === 'number' ? episodes : 0);
     if (total <= size) return;
 
-    for (let start = 1; start <= total; start += size) {
-      const end = Math.min(start + size - 1, total);
+    const numChunks = Math.ceil(total / size);
+    for (let c = 0; c < numChunks; c++) {
+      const startIdx = c * size;
+      const endIdx = Math.min(startIdx + size - 1, total - 1);
+      const startEp = Array.isArray(episodes) ? episodes[startIdx]?.episodeNumber || (startIdx + 1) : (startIdx + 1);
+      const endEp = Array.isArray(episodes) ? episodes[endIdx]?.episodeNumber || (endIdx + 1) : (endIdx + 1);
+
       const tab = document.createElement('button');
-      tab.className = `range-tab ${start === currentStart ? 'active' : ''}`;
-      tab.textContent = `${start}-${end}`;
+      tab.className = `range-tab ${c === activeChunkIndex ? 'active' : ''}`;
+      tab.textContent = `${startEp} - ${endEp}`;
       tab.addEventListener('click', () => {
-        this.renderSidebarEpisodeList(this.currentEpisodes, start, size);
+        this.renderSidebarEpisodeList(this.currentEpisodes, c, size);
       });
       this.epRangeTabs.appendChild(tab);
     }
   }
 
   jumpToEpisode() {
-    const val = parseInt(this.epJumpInput.value, 10);
-    if (!val || !this.currentEpisodes || this.currentEpisodes.length === 0) return;
-    const matchIdx = this.currentEpisodes.findIndex(e => parseInt(e.episodeNumber, 10) === val);
+    const rawVal = this.epJumpInput.value.trim();
+    if (!rawVal || !this.currentEpisodes || this.currentEpisodes.length === 0) return;
+    const matchIdx = this.currentEpisodes.findIndex(e => 
+      String(e.episodeNumber).toLowerCase() === rawVal.toLowerCase() ||
+      parseFloat(e.episodeNumber) === parseFloat(rawVal)
+    );
     if (matchIdx >= 0) {
+      const chunkSize = 50;
+      const chunkIdx = Math.floor(matchIdx / chunkSize);
+      this.renderSidebarEpisodeList(this.currentEpisodes, chunkIdx, chunkSize);
       this.playEpisode(matchIdx);
     } else {
       const firstEp = this.currentEpisodes[0].episodeNumber;
       const lastEp = this.currentEpisodes[this.currentEpisodes.length - 1].episodeNumber;
-      this.showToast(`Episode ${val} is not available yet. (Available: ${firstEp} – ${lastEp})`, 'error');
+      this.showToast(`Episode ${rawVal} is not available yet. (Available: ${firstEp} – ${lastEp})`, 'error');
     }
   }
 
@@ -1347,8 +1512,10 @@ class ErumiApp {
     this.videoLoader.style.display = 'flex';
     this.videoStatusText.textContent = `Resolving Episode ${epNum}...`;
 
-    // Re-render sidebar to highlight active playing episode
-    this.renderSidebarEpisodeList(this.currentEpisodes);
+    // Re-render sidebar to highlight active playing episode in the appropriate chunk tab
+    const targetChunk = Math.floor(epIndex / 50);
+    this._currentEpChunk = targetChunk;
+    this.renderSidebarEpisodeList(this.currentEpisodes, targetChunk);
 
     // Scroll active episode into view
     setTimeout(() => {
@@ -1373,10 +1540,13 @@ class ErumiApp {
         const rawStreamUrl = json.data.episodes[0].url;
         const streamMeta = json.data.episodes[0].stream || {};
         const referer = streamMeta.referer || '';
+        const subtitles = streamMeta.subtitles || json.data.episodes[0].subtitles || [];
 
         ep.unavailable = false;
+        this.hideInPlayerError();
+        this._startSkipIntroWatcher();
         const proxiedUrl = `${this.apiUrl}/api/proxy?url=${encodeURIComponent(rawStreamUrl)}&referer=${encodeURIComponent(referer)}`;
-        this.initVideoPlayer(proxiedUrl, explicitResumeTime);
+        this.initVideoPlayer(proxiedUrl, explicitResumeTime, subtitles, referer);
         this.showToast(`Now Streaming: Episode ${epNum}`, 'success');
       } else {
         // Fix 1: Always hide loader on failure so spinner never gets permanently stuck
@@ -1385,8 +1555,9 @@ class ErumiApp {
         this._isSwitchingEpisode = false;
         ep.unavailable = true;
         this.renderSidebarEpisodeList(this.currentEpisodes);
-        const err = (json && json.error) ? json.error : `Episode ${epNum} is currently unavailable or has not aired yet.`;
+        const err = (json && json.error) ? json.error : `Episode ${epNum} stream could not be loaded. Please try again or select another server.`;
         this.videoStatusText.textContent = err;
+        this.showInPlayerError(err);
         this.showToast(err, 'error');
       }
     } catch (e) {
@@ -1397,11 +1568,12 @@ class ErumiApp {
       ep.unavailable = true;
       this.renderSidebarEpisodeList(this.currentEpisodes);
       this.videoStatusText.textContent = `Stream Error: ${e.message}`;
+      this.showInPlayerError(`Stream Error: ${e.message}`);
       this.showToast(`Stream load error: ${e.message}`, 'error');
     }
   }
 
-  initVideoPlayer(streamUrl, explicitResumeTime = null) {
+  initVideoPlayer(streamUrl, explicitResumeTime = null, subtitles = [], referer = '') {
     this.videoLoader.style.display = 'none';
     this._hlsNetworkRetries = 0; // Fix 4b: Reset retry counter for each new episode
     if (this.hls) {
@@ -1412,10 +1584,18 @@ class ErumiApp {
     // Reset timestamp to 0 before loading new source.
     this.videoPlayer.currentTime = 0;
 
+    // Enable cross-origin for subtitle tracks
+    this.videoPlayer.crossOrigin = 'anonymous';
+
+    // Setup and attach subtitles
+    this.setupSubtitles(subtitles, referer);
+
     if (Hls.isSupported()) {
       this.hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
+        enableWebVTT: false,
+        subtitleDisplay: false,
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
         maxBufferSize: 60 * 1000 * 1000,
@@ -1462,7 +1642,8 @@ class ErumiApp {
                 this.hls.destroy();
                 this.hls = null;
                 this.videoStatusText.textContent = 'Stream unavailable. Please re-select the episode or try again.';
-                this.videoLoader.style.display = 'flex';
+                this.videoLoader.style.display = 'none';
+                this.showInPlayerError('Stream connection lost after 3 retries.');
                 this.showToast('Stream failed after 3 retries. Please re-select the episode.', 'error');
               }
               break;
@@ -1513,6 +1694,256 @@ class ErumiApp {
         }
       });
     }
+  }
+
+  parseWebVTT(vttText) {
+    const cues = [];
+    if (!vttText || typeof vttText !== 'string') return cues;
+
+    const parseTime = (timeStr) => {
+      if (!timeStr) return null;
+      const clean = timeStr.trim().split(/\s+/)[0];
+      const parts = clean.split(':');
+      let hours = 0, minutes = 0, seconds = 0;
+      if (parts.length === 3) {
+        hours = parseFloat(parts[0]) || 0;
+        minutes = parseFloat(parts[1]) || 0;
+        seconds = parseFloat(parts[2].replace(',', '.')) || 0;
+      } else if (parts.length === 2) {
+        minutes = parseFloat(parts[0]) || 0;
+        seconds = parseFloat(parts[1].replace(',', '.')) || 0;
+      } else {
+        return null;
+      }
+      return (hours * 3600) + (minutes * 60) + seconds;
+    };
+
+    const lines = vttText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    let i = 0;
+
+    while (i < lines.length) {
+      const line = lines[i].trim();
+      if (line.includes('-->')) {
+        const arrowParts = line.split('-->');
+        const start = parseTime(arrowParts[0]);
+        const end = parseTime(arrowParts[1]);
+
+        i++;
+        const textLines = [];
+        while (i < lines.length && lines[i].trim() !== '') {
+          textLines.push(lines[i].trim());
+          i++;
+        }
+
+        if (start !== null && end !== null && textLines.length > 0) {
+          const cleanText = textLines.join('\n')
+            .replace(/<[^>]+>/g, '')
+            .trim();
+          if (cleanText) {
+            cues.push({ start, end, text: cleanText });
+          }
+        }
+      } else {
+        i++;
+      }
+    }
+
+    return cues;
+  }
+
+  async loadSubtitleCues(srcUrl) {
+    this.subtitleCues = [];
+    if (!srcUrl) return;
+    try {
+      const res = await fetch(srcUrl);
+      if (!res.ok) {
+        console.warn('[Erumi] Failed to fetch subtitle track:', res.status);
+        return;
+      }
+      const vttText = await res.text();
+      this.subtitleCues = this.parseWebVTT(vttText);
+      console.log(`[Erumi] Successfully parsed ${this.subtitleCues.length} subtitle cues`);
+    } catch (err) {
+      console.warn('[Erumi] Error loading subtitle track:', err);
+    }
+  }
+
+  updateSubtitleOverlay() {
+    if (!this.videoPlayer || !this.videoSubtitlesOverlay) return;
+
+    const isDirectVideoFs = (document.fullscreenElement === this.videoPlayer) ||
+                            (document.webkitFullscreenElement === this.videoPlayer) ||
+                            (this.videoPlayer && this.videoPlayer.webkitDisplayingFullscreen);
+
+    if (isDirectVideoFs) {
+      this.videoSubtitlesOverlay.style.display = 'none';
+      return;
+    }
+
+    if (!this.subtitleCues || this.subtitleCues.length === 0 || this.activeSubtitleTrackIndex === -1) {
+      this.videoSubtitlesOverlay.style.display = 'none';
+      this.videoSubtitlesOverlay.innerHTML = '';
+      return;
+    }
+
+    const t = this.videoPlayer.currentTime;
+    const activeCue = this.subtitleCues.find(c => t >= c.start && t <= c.end);
+
+    if (activeCue && activeCue.text) {
+      const formatted = activeCue.text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n/g, '<br>');
+
+      this.videoSubtitlesOverlay.innerHTML = `<span class="video-subtitles-text">${formatted}</span>`;
+      this.videoSubtitlesOverlay.style.display = 'flex';
+    } else {
+      this.videoSubtitlesOverlay.style.display = 'none';
+      this.videoSubtitlesOverlay.innerHTML = '';
+    }
+  }
+
+  setupSubtitles(subtitles, referer) {
+    if (!this.videoPlayer) return;
+
+    // Reset overlay & state
+    this.subtitleCues = [];
+    this.activeSubtitleTrackIndex = -1;
+    if (this.videoSubtitlesOverlay) {
+      this.videoSubtitlesOverlay.style.display = 'none';
+      this.videoSubtitlesOverlay.innerHTML = '';
+    }
+
+    // Remove existing HTML5 track elements
+    const oldTracks = this.videoPlayer.querySelectorAll('track');
+    oldTracks.forEach(t => t.remove());
+
+    if (!Array.isArray(subtitles) || subtitles.length === 0) {
+      if (this.subtitleSelectWrap) this.subtitleSelectWrap.style.display = 'none';
+      return;
+    }
+
+    // Filter valid subtitle objects with src, file, or url
+    const validSubs = subtitles.filter(s => !!(s && (s.src || s.file || s.url)));
+    if (validSubs.length === 0) {
+      if (this.subtitleSelectWrap) this.subtitleSelectWrap.style.display = 'none';
+      return;
+    }
+
+    if (this.subtitleSelectWrap) this.subtitleSelectWrap.style.display = 'inline-flex';
+
+    // Prioritize English / default tracks first
+    const sortedSubs = [...validSubs].sort((a, b) => {
+      const aName = ((a.label || a.lang || '') + '').toLowerCase();
+      const bName = ((b.label || b.lang || '') + '').toLowerCase();
+      const aIsEn = aName.includes('en') || aName.includes('eng') || aName.includes('english');
+      const bIsEn = bName.includes('en') || bName.includes('eng') || bName.includes('english');
+      if (a.default && !b.default) return -1;
+      if (!a.default && b.default) return 1;
+      if (aIsEn && !bIsEn) return -1;
+      if (!aIsEn && bIsEn) return 1;
+      return 0;
+    });
+
+    this.currentSubtitles = sortedSubs;
+
+    // Populate dropdown options
+    if (this.subtitleSelect) {
+      this.subtitleSelect.innerHTML = '<option value="off">Subs: Off</option>';
+    }
+
+    let defaultTrackIndex = 0;
+
+    sortedSubs.forEach((sub, idx) => {
+      const label = sub.label || sub.lang || `Track ${idx + 1}`;
+      const lang = (sub.lang || 'en').toLowerCase();
+      const isEnglish = label.toLowerCase().includes('english') || lang.startsWith('en');
+      const isDefault = sub.default || (isEnglish && defaultTrackIndex === 0);
+
+      if (isDefault) {
+        defaultTrackIndex = idx;
+      }
+
+      const rawSrc = sub.src || sub.file || sub.url;
+      const proxiedSrc = `${this.apiUrl}/api/proxy?url=${encodeURIComponent(rawSrc)}&referer=${encodeURIComponent(referer)}`;
+      sub._proxiedSrc = proxiedSrc;
+
+      // Add HTML5 <track> element to the video tag (fallback for direct native video fullscreen)
+      const track = document.createElement('track');
+      track.kind = 'subtitles';
+      track.label = label;
+      track.srclang = lang;
+      track.src = proxiedSrc;
+      if (idx === defaultTrackIndex) {
+        track.default = true;
+      }
+      this.videoPlayer.appendChild(track);
+
+      // Add option to the subtitle selector dropdown
+      if (this.subtitleSelect) {
+        const opt = document.createElement('option');
+        opt.value = String(idx);
+        opt.textContent = `Subs: ${label}`;
+        if (idx === defaultTrackIndex) {
+          opt.selected = true;
+        }
+        this.subtitleSelect.appendChild(opt);
+      }
+    });
+
+    if (this.subtitleSelect) {
+      this.subtitleSelect.value = String(defaultTrackIndex);
+    }
+
+    // Immediately load active track cues into the custom overlay engine
+    this.activeSubtitleTrackIndex = defaultTrackIndex;
+    if (sortedSubs[defaultTrackIndex]) {
+      this.loadSubtitleCues(sortedSubs[defaultTrackIndex]._proxiedSrc);
+    }
+
+    if (window.feather) feather.replace();
+
+    // Synchronize subtitle display mode: hide native tracks in windowed / container fullscreen,
+    // only show them if browser enters direct <video> fullscreen.
+    this.syncSubtitleDisplayMode();
+    this.videoPlayer.addEventListener('loadedmetadata', () => this.syncSubtitleDisplayMode(), { once: true });
+    this.videoPlayer.addEventListener('play', () => this.syncSubtitleDisplayMode(), { once: true });
+  }
+
+  onSubtitleChange(val) {
+    if (!this.videoPlayer) return;
+
+    if (val === 'off') {
+      this.activeSubtitleTrackIndex = -1;
+      this.subtitleCues = [];
+      if (this.videoSubtitlesOverlay) {
+        this.videoSubtitlesOverlay.style.display = 'none';
+        this.videoSubtitlesOverlay.innerHTML = '';
+      }
+      const textTracks = this.videoPlayer.textTracks;
+      if (textTracks) {
+        for (let i = 0; i < textTracks.length; i++) {
+          textTracks[i].mode = 'disabled';
+        }
+      }
+      this.showToast('Subtitles disabled', 'info');
+      return;
+    }
+
+    const idx = parseInt(val, 10);
+    if (isNaN(idx) || idx < 0 || !this.currentSubtitles || !this.currentSubtitles[idx]) return;
+
+    this.activeSubtitleTrackIndex = idx;
+    const targetSub = this.currentSubtitles[idx];
+    if (targetSub && targetSub._proxiedSrc) {
+      this.loadSubtitleCues(targetSub._proxiedSrc);
+    }
+
+    this.syncSubtitleDisplayMode();
+
+    const activeLabel = targetSub.label || targetSub.lang || `Track ${idx + 1}`;
+    this.showToast(`Subtitles: ${activeLabel}`, 'success');
   }
 
   playPrevEpisode() {
@@ -1741,6 +2172,18 @@ class ErumiApp {
   }
 
   async loadLatest() {
+    // Show genre chips row and highlight 'All' chip
+    const genreRow = document.getElementById('genreChipsRow');
+    if (genreRow) genreRow.style.display = 'flex';
+    document.querySelectorAll('.genre-chip-btn').forEach(btn => {
+      const g = btn.dataset.genre || btn.textContent.trim();
+      btn.classList.toggle('active', g.toLowerCase() === 'all');
+    });
+
+    // Re-activate Latest pill
+    document.querySelectorAll('.filter-pills .pill').forEach(p => p.classList.remove('active'));
+    const pillLatest = document.getElementById('pillLatest');
+    if (pillLatest) pillLatest.classList.add('active');
     this.showBrowseView();
     this.currentMode = 'latest';
     this.currentQuery = '';
@@ -1992,6 +2435,10 @@ class ErumiApp {
     this.videoPlayer.pause();
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
+    // Hide genre chips row in watchlist view
+    const genreRow = document.getElementById('genreChipsRow');
+    if (genreRow) genreRow.style.display = 'none';
+
     this.currentMode = 'watchlist';
     this.setActiveNav('watchlist');
     this.heroSection.style.display = 'none';
@@ -2149,6 +2596,8 @@ class ErumiApp {
         if (watchlistEl) watchlistEl.textContent = (this.watchlist || []).length;
 
         // Populate System Info
+        const verEl = document.getElementById('sysServerVersion');
+        if (verEl && stats.version) verEl.textContent = stats.version;
         const mpvEl = document.getElementById('sysMpvStatus');
         const lanEl = document.getElementById('sysLanAddress');
         if (mpvEl) mpvEl.textContent = stats.mpv_available ? 'MPV Installed ✓' : 'Not Available';
@@ -2210,8 +2659,383 @@ class ErumiApp {
     }
   }
 
-  async clearBackendCache() {
+
+  /* ══════════════════════════════════════════════════════════════
+     FEATURE v2.8 — Franchise / Season Switcher
+     ══════════════════════════════════════════════════════════════ */
+
+  toggleSeasonDropdown() {
+    const wrap = document.getElementById('seasonSwitcherWrap');
+    if (!wrap) return;
+    wrap.classList.toggle('open');
+    if (wrap.classList.contains('open')) {
+      const close = (e) => {
+        if (!wrap.contains(e.target)) {
+          wrap.classList.remove('open');
+          document.removeEventListener('click', close);
+        }
+      };
+      setTimeout(() => document.addEventListener('click', close), 10);
+    }
+  }
+
+  async loadFranchiseSwitcher(anime) {
+    const wrap = document.getElementById('seasonSwitcherWrap');
+    const menu = document.getElementById('seasonDropdownMenu');
+    const labelEl = document.getElementById('seasonSelectLabel');
+    if (!wrap || !menu) return;
+    wrap.style.display = 'none';
+    menu.innerHTML = '';
+
     try {
+      const url = new URL(`${this.apiUrl}/api/metadata`);
+      url.searchParams.set('q', this.cleanTitleForSearch(anime.title));
+      if (anime.year) url.searchParams.set('year', String(anime.year));
+      const res = await fetch(url.toString(), { signal: AbortSignal.timeout(10000) });
+      const json = await res.json();
+      if (!json.success || !json.data) return;
+
+      const meta = json.data;
+      const relations = meta.relations?.edges || [];
+
+      // Valid anime formats for franchise switching (includes ONA, SPECIAL, MOVIE, TV)
+      const validFormats = new Set(['TV', 'TV_SHORT', 'ONA', 'MOVIE', 'SPECIAL', 'OVA']);
+
+      // Collect related entries, deduplicated by AniList ID
+      const currentId = meta.id || null;
+      const seenIds = new Set();
+      if (currentId) seenIds.add(currentId);
+
+      const relatedEntries = [];
+      for (const edge of relations) {
+        const node = edge.node;
+        if (!node) continue;
+        const rType = edge.relationType;
+        if (rType !== 'SEQUEL' && rType !== 'PREQUEL' && rType !== 'SIDE_STORY') continue;
+        if (node.format && !validFormats.has(node.format)) continue;
+
+        // Skip promotional chibi mini shorts (e.g. 30s mini animations)
+        const titleLower = (node.title?.english || node.title?.romaji || '').toLowerCase();
+        if (
+          titleLower.includes('petit') ||
+          titleLower.includes('mini animation') ||
+          titleLower.includes('date movie') ||
+          titleLower.includes('collab mini') ||
+          titleLower.includes('fashion check')
+        ) {
+          continue;
+        }
+
+        if (seenIds.has(node.id)) continue;
+        seenIds.add(node.id);
+        relatedEntries.push({ node, relationType: rType });
+      }
+
+      // Need at least 1 related season to show the switcher
+      if (relatedEntries.length === 0) return;
+
+      // Current season info
+      const currentYear = meta.seasonYear || anime.year || 9999;
+      const currentTitle = anime.title || meta.title?.english || meta.title?.romaji || 'Current Season';
+
+      const allEntries = [
+        {
+          displayTitle: currentTitle,
+          year: currentYear,
+          isCurrent: true,
+          node: meta,
+          relationType: 'CURRENT'
+        },
+        ...relatedEntries.map(({ node, relationType }) => ({
+          displayTitle: node.title?.english || node.title?.romaji || 'Season',
+          year: node.seasonYear || 9999,
+          isCurrent: false,
+          node,
+          relationType
+        }))
+      ];
+
+      // Sort by year ascending (earliest season first)
+      allEntries.sort((a, b) => (a.year || 9999) - (b.year || 9999));
+
+      // Determine label for the dropdown button
+      const currentSeasonInfo = this.getSeasonAndPart(anime.title);
+      const currentIdx = allEntries.findIndex(e => e.isCurrent);
+      let shortSeasonName = '';
+      if (currentSeasonInfo.season) {
+        shortSeasonName = `Season ${currentSeasonInfo.season}`;
+        if (currentSeasonInfo.part) shortSeasonName += ` Part ${currentSeasonInfo.part}`;
+      } else if (currentIdx >= 0) {
+        shortSeasonName = `Season ${currentIdx + 1}`;
+      } else {
+        shortSeasonName = 'Current Season';
+      }
+
+      // Display clean descriptive title in the button label
+      let buttonLabel = currentTitle;
+      if (shortSeasonName && !buttonLabel.toLowerCase().includes('season') && !buttonLabel.toLowerCase().includes('part')) {
+        buttonLabel = `${shortSeasonName}: ${buttonLabel}`;
+      }
+      if (labelEl) {
+        labelEl.textContent = buttonLabel;
+        labelEl.title = buttonLabel;
+      }
+
+      // Render dropdown items in chronological order
+      allEntries.forEach((entry) => {
+        const itemBtn = document.createElement('button');
+        itemBtn.className = 'season-dropdown-item' + (entry.isCurrent ? ' active' : '');
+        itemBtn.type = 'button';
+        const tagLabel = entry.isCurrent ? 'Current' : entry.relationType.toLowerCase().replace('_', ' ');
+        const yearStr = (entry.year && entry.year !== 9999) ? `${entry.year}` : '';
+        const fmtStr = entry.node?.format ? entry.node.format : '';
+        const metaStr = [yearStr, fmtStr].filter(Boolean).join(' · ');
+
+        itemBtn.innerHTML = `
+          <div class="season-dropdown-item-main">
+            <span class="season-dropdown-item-title">${entry.displayTitle}</span>
+            ${metaStr ? `<span class="season-dropdown-item-meta">${metaStr}</span>` : ''}
+          </div>
+          <span class="season-dropdown-item-tag">${tagLabel}</span>
+        `;
+
+        if (entry.isCurrent) {
+          itemBtn.onclick = () => wrap.classList.remove('open');
+        } else {
+          itemBtn.onclick = () => {
+            wrap.classList.remove('open');
+            const relatedAnime = {
+              title: entry.displayTitle,
+              name: entry.node.title?.romaji || entry.displayTitle,
+              englishName: entry.node.title?.english || entry.displayTitle,
+              year: entry.node.seasonYear || null,
+              index: 1,
+              mode: anime.mode || 'sub',
+              session: null,
+              episodes: [],
+              genres: []
+            };
+            this.openWatchView(relatedAnime, 0);
+          };
+        }
+        menu.appendChild(itemBtn);
+      });
+
+      wrap.style.display = 'inline-flex';
+      if (window.feather) feather.replace();
+    } catch (err) {
+      console.warn('[Yorumi] loadFranchiseSwitcher failed:', err);
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     FEATURE v2.8 — Sub/Dub Quick Toggle
+     ══════════════════════════════════════════════════════════════ */
+
+  toggleSubDub() {
+    const audioSel = document.getElementById('settingAudio');
+    const current = audioSel?.value || 'sub';
+    const next = current === 'sub' ? 'dub' : 'sub';
+    if (audioSel) audioSel.value = next;
+
+    this.syncSubDubButton();
+
+    // Hide error overlay if visible
+    const overlay = document.getElementById('inplayerErrorOverlay');
+    if (overlay) overlay.style.display = 'none';
+
+    // Re-play the current episode with the new audio setting
+    if (this.currentEpisodes && this.currentEpIndex >= 0) {
+      this.playEpisode(this.currentEpIndex);
+    }
+    this.showToast(`Switched to ${next.toUpperCase()}`, 'info');
+  }
+
+  syncSubDubButton() {
+    const audioSel = document.getElementById('settingAudio');
+    const current = audioSel?.value || 'sub';
+    const label = document.getElementById('subDubToggleText');
+    const btn = document.getElementById('subDubToggleBtn');
+    if (label) label.textContent = current.toUpperCase();
+    if (btn) {
+      btn.style.borderColor = current === 'dub' ? '#facc15' : '';
+      btn.style.color      = current === 'dub' ? '#facc15' : '';
+      btn.style.background = current === 'dub' ? 'rgba(250,204,21,0.1)' : '';
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     FEATURE v2.8 — Playback Speed Control
+     ══════════════════════════════════════════════════════════════ */
+
+  toggleSpeedDropdown() {
+    const dd = document.getElementById('speedDropdown');
+    if (!dd) return;
+    dd.classList.toggle('open');
+    if (dd.classList.contains('open')) {
+      const close = (e) => {
+        if (!document.getElementById('speedControlWrap')?.contains(e.target)) {
+          dd.classList.remove('open');
+          document.removeEventListener('click', close);
+        }
+      };
+      setTimeout(() => document.addEventListener('click', close), 10);
+    }
+  }
+
+  setPlaybackSpeed(rate) {
+    if (this.videoPlayer) this.videoPlayer.playbackRate = rate;
+    const lbl = document.getElementById('speedLabel');
+    if (lbl) lbl.textContent = rate === 1 ? '1\u00d7' : `${rate}\u00d7`;
+    const dd = document.getElementById('speedDropdown');
+    if (dd) {
+      dd.querySelectorAll('.speed-dropdown-item').forEach(btn => {
+        btn.classList.toggle('active', parseFloat(btn.textContent) === rate);
+      });
+      dd.classList.remove('open');
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     FEATURE v2.8 — Skip Intro
+     ══════════════════════════════════════════════════════════════ */
+
+  skipIntro() {
+    if (!this.videoPlayer) return;
+    this.videoPlayer.currentTime += 85;
+    const btn = document.getElementById('skipIntroBtn');
+    if (btn) btn.classList.remove('visible');
+    this._skipIntroDismissed = true;
+  }
+
+  _startSkipIntroWatcher() {
+    if (this._skipIntroTimerId) clearInterval(this._skipIntroTimerId);
+    this._skipIntroDismissed = false;
+    const btn = document.getElementById('skipIntroBtn');
+    if (!btn || !this.videoPlayer) return;
+    btn.classList.remove('visible');
+
+    this._skipIntroTimerId = setInterval(() => {
+      const t   = this.videoPlayer?.currentTime || 0;
+      const dur = this.videoPlayer?.duration   || 0;
+      // Show the Skip Intro button during 30–150 s, hide if user already clicked it
+      if (!this._skipIntroDismissed && t >= 30 && t <= 150 && dur > 200) {
+        btn.classList.add('visible');
+      } else {
+        btn.classList.remove('visible');
+      }
+    }, 1000);
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     FEATURE v2.8 — In-Player Error Recovery Overlay
+     ══════════════════════════════════════════════════════════════ */
+
+  showInPlayerError(msg) {
+    msg = msg || 'Stream failed to load. Try Retry, switch audio, or open in MPV.';
+    const overlay = document.getElementById('inplayerErrorOverlay');
+    const msgEl   = document.getElementById('inplayerErrorMsg');
+    if (!overlay) return;
+    if (msgEl) msgEl.textContent = msg;
+    overlay.style.display = 'flex';
+    if (window.feather) feather.replace();
+  }
+
+  hideInPlayerError() {
+    const overlay = document.getElementById('inplayerErrorOverlay');
+    if (overlay) overlay.style.display = 'none';
+  }
+
+  retryStream() {
+    this.hideInPlayerError();
+    if (this.currentEpisodes && this.currentEpIndex >= 0) {
+      this.playEpisode(this.currentEpIndex);
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     FEATURE v2.8 — Upcoming / Unreleased Season State
+     ══════════════════════════════════════════════════════════════ */
+
+  showUpcomingState(title, nextAiringEpisode) {
+    title = title || '';
+    let airingInfo = '';
+    if (nextAiringEpisode && nextAiringEpisode.timeUntilAiring) {
+      const days = Math.ceil(nextAiringEpisode.timeUntilAiring / 86400);
+      airingInfo = `<div class="upcoming-airing-badge">\u23f0 Episode ${nextAiringEpisode.episode} airs in ${days} day${days !== 1 ? 's' : ''}</div>`;
+    }
+    const html = `
+      <div class="upcoming-state-card">
+        <div class="upcoming-state-icon"><i data-feather="clock"></i></div>
+        <p class="upcoming-state-title">Coming Soon</p>
+        <p class="upcoming-state-sub">${title ? `<strong>${title}</strong> hasn\u2019t aired yet. ` : ''}Check back closer to the premiere date.</p>
+        ${airingInfo}
+      </div>
+    `;
+    this.sidebarEpisodesList.innerHTML = html;
+    this.sidebarEpCount.textContent = 'Not yet aired';
+    if (window.feather) feather.replace();
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     FEATURE v2.8 — Genre Filter Chips
+     ══════════════════════════════════════════════════════════════ */
+
+  async loadGenreFilter(genre) {
+    if (!genre || genre.toLowerCase() === 'all') {
+      return this.loadLatest();
+    }
+
+    // Make sure browse view is visible
+    this.showBrowseView();
+
+    // Ensure genre chips row is displayed
+    const genreRow = document.getElementById('genreChipsRow');
+    if (genreRow) genreRow.style.display = 'flex';
+
+    // Update active chip highlight accurately using dataset
+    document.querySelectorAll('.genre-chip-btn').forEach(btn => {
+      const g = btn.dataset.genre || btn.textContent.trim();
+      btn.classList.toggle('active', g.toLowerCase() === genre.toLowerCase());
+    });
+
+    // Clear category pill active states
+    document.querySelectorAll('.filter-pills .pill').forEach(p => p.classList.remove('active'));
+
+    this.showLoader(`Browsing ${genre} anime...`);
+    this.currentMode = 'genre';
+    this.sectionTitle.textContent = `${genre} Anime`;
+    this.sectionSubtitle.textContent = `Top ${genre} anime releases`;
+    if (this.heroSection) this.heroSection.style.display = 'none';
+
+    const recoSection = document.getElementById('recommendationsSection');
+    if (recoSection) recoSection.style.display = 'none';
+    if (this.continueWatchingSection) this.continueWatchingSection.style.display = 'none';
+
+    try {
+      const res = await fetch(`${this.apiUrl}/api/browse?genre=${encodeURIComponent(genre)}&limit=36`);
+      const json = await res.json();
+      this.hideLoader();
+
+      if (json.success && json.data && json.data.results && json.data.results.length > 0) {
+        this.hideError();
+        this.renderAnimeGrid(json.data.results, { mode: 'direct' });
+      } else {
+        this.showError(`No ${genre} anime found. Try selecting another genre.`);
+        if (this.emptyActions) {
+          this.emptyActions.innerHTML = `<button class="btn btn-primary" onclick="app.loadLatest()">Back to Latest</button>`;
+        }
+      }
+    } catch (e) {
+      this.hideLoader();
+      this.showError(`Could not load ${genre} anime: ${e.message}`);
+      if (this.emptyActions) {
+        this.emptyActions.innerHTML = `<button class="btn btn-primary" onclick="app.loadLatest()">Back to Latest</button>`;
+      }
+    }
+  }
+
+  async clearBackendCache() { try {
       const res = await fetch(`${this.apiUrl}/api/cache/clear`, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
@@ -2235,6 +3059,13 @@ class ErumiApp {
     }
   }
 }
+
+// Global safety bridge for subtitle change
+window.onSubtitleChange = (val) => {
+  if (window.app && typeof window.app.onSubtitleChange === 'function') {
+    window.app.onSubtitleChange(val);
+  }
+};
 
 // Initialize application on DOM ready
 document.addEventListener('DOMContentLoaded', () => {

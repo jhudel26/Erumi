@@ -47,6 +47,10 @@ TRUSTED_CDN_HOSTNAMES = {
     "allanime.day", "api.allanime.day",
     "allanime.to", "api.allanime.to",
     "anilist.co", "graphql.anilist.co",
+    "hianime.at", "www.hianime.at",
+    "zokoanime.video", "www.zokoanime.video",
+    "dramahot.top", "hls.dramahot.top",
+    "megaplay.buzz", "www.megaplay.buzz",
 }
 
 def is_trusted_url(url: str) -> bool:
@@ -183,6 +187,7 @@ def save_config(cfg: dict) -> bool:
         return False
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+SERVER_VERSION = "v2.8.2"
 CURRENT_PORT = 3000
 SERVER_INSTANCE = None
 
@@ -334,6 +339,12 @@ def default_referer_for(url: str) -> str:
     try:
         parsed = urllib.parse.urlparse(url)
         host = parsed.hostname or ""
+        if "dramahot.top" in host:
+            return "https://zokoanime.video/"
+        if "zokoanime.video" in host:
+            return "https://hianime.at/"
+        if "megaplay.buzz" in host:
+            return "https://hianime.at/"
         if "vivibebe.site" in host or "ibyteimg.com" in host:
             return "https://vivibebe.site/"
         if "anidb.app" in host:
@@ -395,6 +406,8 @@ def score_search_result(query: str, result: Dict[str, Any]) -> int:
     titles = [t for t in titles if t]
     score = 0
     exact_match = False
+    q_info = parse_season_and_part(query)
+
     for title in titles:
         if title == q:
             exact_match = True
@@ -404,13 +417,31 @@ def score_search_result(query: str, result: Dict[str, Any]) -> int:
         elif q in title:
             score = max(score, 5_000)
 
+        t_info = parse_season_and_part(title)
+        if q_info["season"] and t_info["season"]:
+            if q_info["season"] == t_info["season"]:
+                score += 30_000
+            else:
+                score -= 50_000
+        if q_info["part"] and t_info["part"]:
+            if q_info["part"] == t_info["part"]:
+                score += 30_000
+            else:
+                score -= 50_000
+
     title_str = str(result.get('title') or '')
     is_special = bool(re.search(r'\b(movie|special|recap|ova|ona)\b', title_str, re.IGNORECASE))
     asks_special = bool(re.search(r'\b(movie|special|recap|ova|ona)\b', query, re.IGNORECASE))
     if is_special and not asks_special:
         score -= 200_000
-    if not asks_special and not exact_match and int(result.get('episodes') or 0) <= 1:
+
+    show_type = (result.get('type') or '').upper()
+    show_status = (result.get('status') or '').upper()
+    is_tv = show_type in ("TV", "TV_SHORT")
+    is_airing_or_upcoming = show_status in ("RELEASING", "NOT_YET_RELEASED", "UPCOMING")
+    if not asks_special and not exact_match and int(result.get('episodes') or 0) <= 1 and not (is_tv or is_airing_or_upcoming):
         score -= 200_000
+
     score += min(int(result.get('episodes') or 0), 1_000)
     return score
 
@@ -435,6 +466,9 @@ def map_show_edges(edges: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if not title:
             continue
 
+        raw_thumb = edge.get("thumbnail")
+        poster = raw_thumb if (raw_thumb and str(raw_thumb).startswith("http")) else None
+
         results.append({
             "id": f"allanime-{edge.get('_id')}",
             "title": title,
@@ -446,7 +480,7 @@ def map_show_edges(edges: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "type": edge.get("type"),
             "status": edge.get("status"),
             "genres": edge.get("genres") or [],
-            "poster": edge.get("thumbnail") or None,
+            "poster": poster,
             "banner": edge.get("banner") or None,
         })
     return results
@@ -712,13 +746,506 @@ def browse_anime(page: int = 1, limit: int = 48, genre: str = "", status: str = 
     }
 
 
+_HIANIME_EP_CACHE: Dict[str, Dict[str, Any]] = {}
+HIANIME_CACHE_TTL = 900  # 15 minutes TTL for episode cache
+
+def clean_title_for_hianime(t: str) -> str:
+    t = re.sub(r'\((TV|Dub|Sub|Dubbed|Subbed|Uncensored|Batch|Raw|1080p|720p|480p)\)', '', t or '', flags=re.IGNORECASE)
+    t = re.sub(r'\[(1080p|720p|480p|Batch|Dual Audio|Uncensored|Raw|Dub|Sub|ENG)\]', '', t, flags=re.IGNORECASE)
+    t = t.replace('[', ' ').replace(']', ' ')
+    t = re.sub(r'\s+', ' ', t)
+    return t.strip()
+
+def _clean_words(s: str) -> List[str]:
+    # 'part' and 'season' are kept so multi-season/part anime aren't treated as identical
+    stop_words = {'the', 'a', 'an', 'by', 'of', 'in', 'to', 'with', 'and', 'for', 'is', 'at', 'on', 'from', 'de', 'wa', 'no', 'wo', 'i', 'my', 'into', 'ill', 'll'}
+    raw = re.findall(r'[a-zA-Z0-9]+', (s or '').lower())
+    # Keep digits even if single-char (e.g. '2', '3', '4') so "Part 2" and "Part 3" are distinguishable
+    return [w for w in raw if w not in stop_words and (len(w) > 1 or w.isdigit())]
+
+def parse_season_and_part(title: str) -> Dict[str, Optional[int]]:
+    s = (title or "").lower()
+    season = None
+    part = None
+
+    # Check for season: "season 4", "s4", "4th season", "season iv", "season 2"
+    m_season = re.search(r'\b(?:season|s)\s*([0-9]{1,2})\b', s)
+    if m_season:
+        season = int(m_season.group(1))
+    else:
+        m_nth = re.search(r'\b([0-9]{1,2})(?:st|nd|rd|th)\s+season\b', s)
+        if m_nth:
+            season = int(m_nth.group(1))
+        else:
+            m_roman = re.search(r'\bseason\s+(i|ii|iii|iv|v|vi|vii|viii|ix|x)\b', s)
+            if m_roman:
+                roman_map = {"i": 1, "ii": 2, "iii": 3, "iv": 4, "v": 5, "vi": 6, "vii": 7, "viii": 8, "ix": 9, "x": 10}
+                season = roman_map.get(m_roman.group(1))
+
+    # Known franchise subtitles mapping to seasons
+    if season is None:
+        if "stone wars" in s:
+            season = 2
+        elif "new world" in s:
+            season = 3
+        elif "science future" in s:
+            season = 4
+        elif "shibuya incident" in s:
+            season = 2
+        elif "yuukaku-hen" in s or "entertainment district" in s:
+            season = 2
+        elif "katanakaji no sato" in s or "swordsmith village" in s:
+            season = 3
+        elif "hashira geiko" in s or "hashira training" in s:
+            season = 4
+        elif "thousand-year blood war" in s or "sennen kessen-hen" in s:
+            season = 2
+        elif "final season" in s:
+            season = 4
+
+    # Check for part / cour: "part 2", "part 3", "cour 2", "part ii", "part iii"
+    m_part = re.search(r'\b(?:part|cour)\s*([0-9]{1,2})\b', s)
+    if m_part:
+        part = int(m_part.group(1))
+    else:
+        m_part_nth = re.search(r'\b([0-9]{1,2})(?:st|nd|rd|th)\s+(?:part|cour)\b', s)
+        if m_part_nth:
+            part = int(m_part_nth.group(1))
+        else:
+            m_part_roman = re.search(r'\b(?:part|cour)\s+(i|ii|iii|iv|v|vi|vii|viii|ix|x)\b', s)
+            if m_part_roman:
+                roman_map = {"i": 1, "ii": 2, "iii": 3, "iv": 4, "v": 5, "vi": 6, "vii": 7, "viii": 8, "ix": 9, "x": 10}
+                part = roman_map.get(m_part_roman.group(1))
+
+    return {"season": season, "part": part}
+
+def extract_subtitle_keywords(title: str) -> List[str]:
+    """Extract distinctive subtitle words from title (words after : or -)."""
+    s = (title or "").strip()
+    subtitle_part = ""
+    if ":" in s:
+        subtitle_part = s.split(":", 1)[1]
+    elif " - " in s:
+        subtitle_part = s.split(" - ", 1)[1]
+    
+    if not subtitle_part:
+        return []
+    
+    words = _clean_words(subtitle_part)
+    meaningful = [w for w in words if w not in {"season", "part", "cour", "tv", "dub", "sub", "hd"} and not w.isdigit()]
+    return meaningful
+
+def _is_valid_title_match(query: str, candidate_name: str, candidate_slug: str) -> bool:
+    """
+    Strict validation to ensure the candidate actually represents the same anime,
+    preventing long fantasy/light novel titles from matching random false positives,
+    and ensuring Season / Part / Subtitle consistency.
+    """
+    q_lower = (query or '').lower().strip()
+    c_lower = (candidate_name or '').lower().strip()
+    c_slug = (candidate_slug or '').lower().strip()
+
+    if not q_lower or not c_lower:
+        return False
+
+    # Season & Part consistency check
+    q_info = parse_season_and_part(q_lower)
+    c_info = parse_season_and_part(c_lower + " " + c_slug.replace('-', ' '))
+
+    # If query specifically asked for Season X (where X > 1), candidate cannot be Season Y (Y != X)
+    if q_info["season"] and c_info["season"] and q_info["season"] != c_info["season"]:
+        return False
+
+    # If query asked for Season > 1, candidate cannot be Season 1
+    if q_info["season"] and q_info["season"] > 1 and c_info["season"] == 1:
+        return False
+
+    # If query specifically asked for Part X, candidate cannot be Part Y (Y != X)
+    if q_info["part"] and c_info["part"] and q_info["part"] != c_info["part"]:
+        return False
+
+    # Subtitle keywords check (e.g. 'science future' vs bare 'dr stone')
+    q_sub = extract_subtitle_keywords(q_lower)
+    if q_sub:
+        c_full_words = set(_clean_words(c_lower + ' ' + c_slug.replace('-', ' ')))
+        if not (set(q_sub) & c_full_words):
+            # Candidate does NOT contain the requested subtitle keywords
+            return False
+
+    if q_lower == c_lower or q_lower == c_slug:
+        return True
+
+    q_words = _clean_words(q_lower)
+    c_words = _clean_words(c_lower + ' ' + c_slug.replace('-', ' '))
+
+    if not q_words or not c_words:
+        return False
+
+    set_q = set(q_words)
+    set_c = set(c_words)
+    overlap = set_q & set_c
+
+    # 1. Main prefix check (e.g. "Magic Repo Man" in "Magic Repo Man: Dumped by My Party...")
+    q_prefix = q_lower.split(':')[0].split(' - ')[0].strip()
+    prefix_words = _clean_words(q_prefix)
+    if prefix_words:
+        prefix_overlap = set(prefix_words) & set_c
+        prefix_ratio = len(prefix_overlap) / len(prefix_words)
+        if prefix_ratio < 0.5:
+            return False
+
+    # 2. Significant word overlap ratio (at least 35% of query words must appear in candidate)
+    q_ratio = len(overlap) / len(set_q)
+    if q_ratio < 0.35 and len(overlap) < 2:
+        return False
+
+    return True
+
+def deobfuscate_otaku_blob(blob: str) -> str:
+    raw = base64.b64decode(blob)
+    key = b"otaku-embed-v1"
+    out = bytearray()
+    for i, b in enumerate(raw):
+        out.append(b ^ key[i % len(key)])
+    return out.decode("utf-8", errors="ignore")
+
+def search_hianime(title: str) -> List[Dict[str, Any]]:
+    clean_t = clean_title_for_hianime(title)
+    if not clean_t:
+        return []
+    s_url = f"https://hianime.at/search?keyword={urllib.parse.quote(clean_t)}"
+    req = urllib.request.Request(s_url, headers={"User-Agent": UA})
+    try:
+        with urllib.request.urlopen(req, timeout=8) as r:
+            html = r.read().decode("utf-8")
+        matches = re.findall(r'<h3 class="film-name">\s*<a href="[^"]*/([^"/]*)"\s*title="([^"]*)"', html)
+        results = []
+        for slug, name in matches:
+            aid = slug.split("-")[-1]
+            results.append({
+                "slug": slug,
+                "id": aid,
+                "name": name.replace("&#039;", "'").replace("&amp;", "&").replace("&quot;", '"').strip()
+            })
+        return results
+    except Exception as e:
+        if sys.stdout is not None:
+            sys.stdout.write(f"[Erumi] HiAnime search error: {str(e)}\n")
+            sys.stdout.flush()
+        return []
+
+def fetch_hianime_episodes_list(title: str) -> Optional[List[Dict[str, Any]]]:
+    clean_t = clean_title_for_hianime(title)
+    results = search_hianime(clean_t)
+    if not results:
+        return None
+
+    # Filter out false positives (must share significant title words / prefix)
+    valid_results = [r for r in results if _is_valid_title_match(clean_t, r["name"], r.get("slug", ""))]
+    if not valid_results:
+        return None
+
+    # Pick best match by similarity among strictly valid results
+    best = valid_results[0]
+    best_score = -9999.0
+    lower_q = clean_t.lower()
+    q_info = parse_season_and_part(lower_q)
+    q_sub = extract_subtitle_keywords(lower_q)
+
+    for item in valid_results:
+        name_l = item["name"].lower()
+        slug_l = item["slug"].lower()
+        sim = _title_similarity(lower_q, name_l) * 100.0
+        c_info = parse_season_and_part(name_l + " " + slug_l.replace("-", " "))
+
+        if name_l == lower_q:
+            sim += 200.0
+        elif name_l.startswith(lower_q[:max(1, len(lower_q)//2)]):
+            sim += 30.0
+        elif lower_q in name_l:
+            sim += 15.0
+
+        # Season and Part matching bonus & penalty
+        if q_info["season"] and c_info["season"]:
+            if q_info["season"] == c_info["season"]:
+                sim += 500.0
+            else:
+                sim -= 2500.0
+        elif q_info["season"] and q_info["season"] > 1 and c_info["season"] == 1:
+            sim -= 2500.0
+
+        if q_info["part"] and c_info["part"]:
+            if q_info["part"] == c_info["part"]:
+                sim += 500.0
+            else:
+                sim -= 2500.0
+
+        # Subtitle keyword bonus
+        if q_sub and (set(q_sub) & set(_clean_words(name_l + " " + slug_l.replace("-", " ")))):
+            sim += 200.0
+
+        if "movie" in slug_l and "movie" not in lower_q:
+            sim -= 60.0
+        if "special" in slug_l and "special" not in lower_q:
+            sim -= 50.0
+        if "ova" in slug_l and "ova" not in lower_q:
+            sim -= 40.0
+        if sim > best_score:
+            best_score = sim
+            best = item
+
+    aid = best["id"]
+    now = time.time()
+    if aid in _HIANIME_EP_CACHE:
+        entry = _HIANIME_EP_CACHE[aid]
+        if now - entry.get("timestamp", 0) < HIANIME_CACHE_TTL:
+            return entry.get("episodes")
+    
+    ep_url = f"https://hianime.at/api/theme/episode/list/{aid}"
+    req = urllib.request.Request(ep_url, headers={
+        "User-Agent": UA,
+        "X-Requested-With": "XMLHttpRequest",
+        "Referer": "https://hianime.at/"
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        ep_html = data.get("html", "")
+        
+        ep_matches = re.findall(r'href="[^"]*\?ep=([0-9]+)"[^>]*data-number="([^"]+)"', ep_html, re.DOTALL)
+        if not ep_matches:
+            ep_matches = re.findall(r'data-number="([^"]+)"[^>]*href="[^"]*\?ep=([0-9]+)"', ep_html, re.DOTALL)
+            ep_matches = [(m[1], m[0]) for m in ep_matches]
+            
+        if not ep_matches:
+            return None
+            
+        episodes = []
+        for eid, num in ep_matches:
+            episodes.append({
+                "id": f"hianime:{aid}-ep-{eid}",
+                "session": f"hianime:{aid}-ep-{eid}",
+                "episodeNumber": num,
+                "epId": eid
+            })
+        _HIANIME_EP_CACHE[aid] = {
+            "timestamp": now,
+            "episodes": episodes
+        }
+        return episodes
+    except Exception as e:
+        if sys.stdout is not None:
+            sys.stdout.write(f"[Erumi] HiAnime episodes fetch error: {str(e)}\n")
+            sys.stdout.flush()
+        return None
+
+def _title_similarity(a: str, b: str) -> float:
+    """
+    Return a 0.0–1.0 similarity score between two title strings.
+    Uses character bigrams (fast, no external libs needed).
+    """
+    a = a.lower().strip()
+    b = b.lower().strip()
+    if a == b:
+        return 1.0
+    if not a or not b:
+        return 0.0
+    def bigrams(s):
+        return [s[i:i+2] for i in range(len(s) - 1)]
+    sa = set(bigrams(a))
+    sb = set(bigrams(b))
+    if not sa and not sb:
+        return 1.0
+    if not sa or not sb:
+        return 0.0
+    return 2.0 * len(sa & sb) / (len(sa) + len(sb))
+
+
+def fetch_hianime_stream(title: str, episode: Any = 1, audio: str = "sub") -> Optional[Dict[str, Any]]:
+    clean_t = clean_title_for_hianime(title)
+    results = search_hianime(clean_t)
+    if not results:
+        return None
+
+    # Filter out false positives (must share significant title words / prefix)
+    valid_results = [r for r in results if _is_valid_title_match(clean_t, r["name"], r.get("slug", ""))]
+    if not valid_results:
+        return None
+
+    # Score each valid result: combine string similarity + structural bonuses/penalties
+    best = valid_results[0]
+    best_score = -9999.0
+    lower_q = clean_t.lower()
+    q_info = parse_season_and_part(lower_q)
+    q_sub = extract_subtitle_keywords(lower_q)
+
+    for item in valid_results:
+        name_l = item["name"].lower()
+        slug_l = item["slug"].lower()
+        c_info = parse_season_and_part(name_l + " " + slug_l.replace("-", " "))
+
+        # Core similarity score (0–100 points)
+        sim = _title_similarity(lower_q, name_l) * 100.0
+
+        # Exact or prefix match bonuses
+        if name_l == lower_q:
+            sim += 200.0
+        elif name_l.startswith(lower_q[:max(1, len(lower_q)//2)]):
+            sim += 30.0
+        elif lower_q in name_l:
+            sim += 15.0
+
+        # Season and Part matching bonus & penalty
+        if q_info["season"] and c_info["season"]:
+            if q_info["season"] == c_info["season"]:
+                sim += 500.0
+            else:
+                sim -= 2500.0
+        elif q_info["season"] and q_info["season"] > 1 and c_info["season"] == 1:
+            sim -= 2500.0
+
+        if q_info["part"] and c_info["part"]:
+            if q_info["part"] == c_info["part"]:
+                sim += 500.0
+            else:
+                sim -= 2500.0
+
+        # Subtitle keyword bonus
+        if q_sub and (set(q_sub) & set(_clean_words(name_l + " " + slug_l.replace("-", " ")))):
+            sim += 200.0
+
+        # Structural penalties
+        if "movie" in slug_l and "movie" not in lower_q:
+            sim -= 60.0
+        if "special" in slug_l and "special" not in lower_q:
+            sim -= 50.0
+        if "ova" in slug_l and "ova" not in lower_q:
+            sim -= 40.0
+
+        if sim > best_score:
+            best_score = sim
+            best = item
+            
+    aid = best["id"]
+    eps = None
+    now = time.time()
+    if aid in _HIANIME_EP_CACHE and (now - _HIANIME_EP_CACHE[aid].get("timestamp", 0) < HIANIME_CACHE_TTL):
+        eps = _HIANIME_EP_CACHE[aid].get("episodes")
+    else:
+        eps = fetch_hianime_episodes_list(title)
+        
+    if not eps:
+        return None
+        
+    target_ep_id = None
+    ep_str = str(episode).strip()
+    try:
+        ep_float = float(ep_str)
+    except ValueError:
+        ep_float = None
+        
+    for ep in eps:
+        n = str(ep["episodeNumber"]).strip()
+        if n == ep_str:
+            target_ep_id = ep["epId"]
+            break
+        if ep_float is not None:
+            try:
+                if float(n) == ep_float:
+                    target_ep_id = ep["epId"]
+                    break
+            except ValueError:
+                pass
+                
+    # If exact match failed, check cour/relative numbering offset
+    if not target_ep_id:
+        try:
+            ep_int = int(ep_float) if ep_float is not None else int(ep_str)
+            # Case 1: user requested 1-based relative index (e.g. Ep 1 of a cour whose episodes are numbered 13-24)
+            if 1 <= ep_int <= len(eps):
+                target_ep_id = eps[ep_int - 1]["epId"]
+            else:
+                # Case 2: user requested continuous episode 13, but provider numbered 1-12
+                first_n = float(eps[0]["episodeNumber"]) if eps and eps[0].get("episodeNumber") else 1.0
+                offset_idx = int(ep_int - first_n)
+                if 0 <= offset_idx < len(eps):
+                    target_ep_id = eps[offset_idx]["epId"]
+        except Exception:
+            pass
+
+    if not target_ep_id:
+        return None
+        
+    srv_url = f"https://hianime.at/api/theme/episode/servers?episodeId={target_ep_id}"
+    req_srv = urllib.request.Request(srv_url, headers={
+        "User-Agent": UA,
+        "X-Requested-With": "XMLHttpRequest",
+        "Referer": "https://hianime.at/"
+    })
+    try:
+        with urllib.request.urlopen(req_srv, timeout=8) as r:
+            srv_data = json.loads(r.read().decode("utf-8"))
+        srv_html = srv_data.get("html", "")
+        
+        servers = re.findall(
+            r'class="[^"]*server-item[^"]*"[^>]*data-type="([^"]*)"[\s\S]*?data-server-name="([^"]*)"[\s\S]*?data-hash="([^"]*)"',
+            srv_html,
+            re.IGNORECASE
+        )
+        if not servers:
+            servers = re.findall(
+                r'data-type="([^"]*)"[\s\S]*?data-server-name="([^"]*)"[\s\S]*?data-hash="([^"]*)"',
+                srv_html,
+                re.IGNORECASE
+            )
+            
+        pref_audio = "dub" if (audio or "").lower() == "dub" else "sub"
+        matching_servers = [s for s in servers if s[0].lower() == pref_audio]
+        if not matching_servers:
+            matching_servers = servers
+            
+        # Prioritize ZokoAnime
+        matching_servers.sort(key=lambda s: 0 if "zokoanime" in s[1].lower() else 1)
+        
+        for stype, sname, shash in matching_servers:
+            try:
+                embed_url = base64.b64decode(shash).decode("utf-8", errors="ignore")
+                req_emb = urllib.request.Request(embed_url, headers={"User-Agent": UA, "Referer": "https://hianime.at/"})
+                with urllib.request.urlopen(req_emb, timeout=8) as r:
+                    emb_html = r.read().decode("utf-8")
+                blob_m = re.search(r'window\.__P\s*=\s*"([^"]*)"', emb_html)
+                if blob_m:
+                    data = json.loads(deobfuscate_otaku_blob(blob_m.group(1)))
+                    src = data.get("src")
+                    if src:
+                        ref = embed_url.split("/")[0] + "//" + embed_url.split("/")[2] + "/"
+                        return {
+                            "provider": "hianime",
+                            "server": sname,
+                            "url": src,
+                            "directUrl": src,
+                            "quality": "Auto",
+                            "audio": stype,
+                            "isHls": True,
+                            "referer": ref,
+                            "subtitles": data.get("subtitles", [])
+                        }
+            except Exception:
+                continue
+    except Exception as e:
+        if sys.stdout is not None:
+            sys.stdout.write(f"[Erumi] HiAnime stream error: {str(e)}\n")
+            sys.stdout.flush()
+    return None
+
+
 def get_anime_episodes(title: str = "", index: int = 1, mode: str = "search") -> Dict[str, Any]:
     show_match = None
     if title:
         res = search_anime(title)
         results = res.get("data", {}).get("results", [])
         if results:
-            idx = max(0, min(index - 1, len(results) - 1))
+            idx = 0 if (mode == "direct" or index == 1) else max(0, min(index - 1, len(results) - 1))
             show_match = results[idx]
 
     if not show_match:
@@ -726,10 +1253,74 @@ def get_anime_episodes(title: str = "", index: int = 1, mode: str = "search") ->
             "id": f"yorumi-{clean_search_query(title)}",
             "title": title or "Anime",
             "year": None,
-            "episodes": 24
+            "episodes": 12
         }
 
-    total_episodes = show_match.get("episodes") or 24
+    # Verified episode list from HiAnime (tries primary title, romaji catalog title, and safe prefixes)
+    hi_eps = None
+    candidate_titles = []
+    base_title = title or show_match.get("title") or ""
+    q_info = parse_season_and_part(base_title)
+    q_subs = extract_subtitle_keywords(base_title)
+    has_specific_season = (q_info["season"] and q_info["season"] > 1) or (q_info["part"] and q_info["part"] > 1) or bool(q_subs)
+
+    for cand in [show_match.get("title"), title, show_match.get("name"), show_match.get("englishName")]:
+        if cand and cand.strip() and cand.strip() not in candidate_titles:
+            candidate_titles.append(cand.strip())
+            
+    # Add safe prefix variants only if they preserve the specific season / subtitle
+    for cand in list(candidate_titles):
+        if " - " in cand:
+            pref = cand.split(" - ")[0].strip()
+            if pref and pref not in candidate_titles:
+                if not has_specific_season or any(w in pref.lower() for w in q_subs):
+                    candidate_titles.append(pref)
+        if ":" in cand:
+            pref = cand.split(":")[0].strip()
+            # Do NOT strip to bare franchise root if target is a specific sequel season/part!
+            if not has_specific_season:
+                if pref and pref not in candidate_titles:
+                    candidate_titles.append(pref)
+
+    for cand in candidate_titles:
+        hi_eps = fetch_hianime_episodes_list(cand)
+        if hi_eps and len(hi_eps) > 0:
+            break
+
+    if hi_eps and len(hi_eps) > 0:
+        return {
+            "success": True,
+            "data": {
+                "type": "episodes",
+                "anime": {
+                    "id": show_match.get("id"),
+                    "title": show_match.get("title"),
+                    "year": show_match.get("year"),
+                    "episodes": len(hi_eps)
+                },
+                "episodes": hi_eps
+            }
+        }
+
+    # If unreleased or 0 available episodes in catalog, do not fabricate fake episodes
+    raw_ep_count = show_match.get("episodes")
+    is_unreleased = (show_match.get("status") or "").upper() in ("NOT_YET_RELEASED", "UPCOMING")
+    if is_unreleased or raw_ep_count == 0:
+        return {
+            "success": True,
+            "data": {
+                "type": "episodes",
+                "anime": {
+                    "id": show_match.get("id"),
+                    "title": show_match.get("title"),
+                    "year": show_match.get("year"),
+                    "episodes": 0
+                },
+                "episodes": []
+            }
+        }
+
+    total_episodes = raw_ep_count or 12
     episodes = [
         {
             "id": f"yorumi:{show_match.get('id')}-ep-{i}",
@@ -784,12 +1375,15 @@ def fetch_anineko_streams(title: str, episode: int, audio: str = "sub") -> List[
         expected_no_the = re.sub(r'^the-', '', expected)
         best_slug = results[0]["slug"]
         best_score = -999999
+        q_info = parse_season_and_part(clean_t)
+        q_subs = extract_subtitle_keywords(clean_t)
 
         for r in results:
             score = 0
             slug = r["slug"].lower()
             slug_no_the = re.sub(r'^the-', '', slug)
             t = r["text"].lower()
+            c_info = parse_season_and_part(t + " " + slug.replace("-", " "))
 
             if slug == expected or slug_no_the == expected_no_the:
                 score += 2500
@@ -798,6 +1392,24 @@ def fetch_anineko_streams(title: str, episode: int, audio: str = "sub") -> List[
             elif slug.startswith(expected) or expected.startswith(slug) or slug_no_the.startswith(expected_no_the):
                 score += 1200
             elif clean_t.lower() in t or t in clean_t.lower():
+                score += 800
+
+            # Season and Part matching bonus & penalty
+            if q_info["season"] and c_info["season"]:
+                if q_info["season"] == c_info["season"]:
+                    score += 1500
+                else:
+                    score -= 4000
+            elif q_info["season"] and q_info["season"] > 1 and c_info["season"] == 1:
+                score -= 4000
+
+            if q_info["part"] and c_info["part"]:
+                if q_info["part"] == c_info["part"]:
+                    score += 1500
+                else:
+                    score -= 4000
+
+            if q_subs and (set(q_subs) & set(_clean_words(t + " " + slug.replace("-", " ")))):
                 score += 800
 
             # TV series preference over Movie/ONA/OVA/Special
@@ -811,8 +1423,6 @@ def fetch_anineko_streams(title: str, episode: int, audio: str = "sub") -> List[
                 score -= 600
             if "special" in slug or "special" in t:
                 score -= 600
-            if "-season-2" in slug and "2" not in clean_t and "ii" not in clean_t.lower():
-                score -= 400
 
             if score > best_score:
                 best_score = score
@@ -888,11 +1498,44 @@ def fetch_anidb_stream(title: str, episode: int = 1, audio: str = "sub") -> Opti
         with urllib.request.urlopen(req, timeout=8) as r:
             page = r.read().decode("utf-8")
 
-        m = re.search(r'anime/[a-z0-9-]+-(\d+)', page, re.IGNORECASE)
-        if not m:
+        matches = re.findall(r'anime/([a-z0-9-]+)-(\d+)', page, re.IGNORECASE)
+        if not matches:
             return None
 
-        anime_id = m.group(1)
+        # Pick best matching anime_id using season/part and title matching
+        q_info = parse_season_and_part(title)
+        q_sub = extract_subtitle_keywords(title)
+        best_id = None
+        best_score = -999999
+        clean_target = clean_search_query(title)
+
+        for slug, aid in matches:
+            t_cand = slug.replace("-", " ")
+            c_info = parse_season_and_part(t_cand)
+            score = _title_similarity(clean_target, t_cand) * 100.0
+
+            if q_info["season"] and c_info["season"]:
+                if q_info["season"] == c_info["season"]:
+                    score += 500
+                else:
+                    score -= 2000
+            elif q_info["season"] and q_info["season"] > 1 and c_info["season"] == 1:
+                score -= 2000
+
+            if q_info["part"] and c_info["part"]:
+                if q_info["part"] == c_info["part"]:
+                    score += 500
+                else:
+                    score -= 2000
+
+            if q_sub and (set(q_sub) & set(_clean_words(t_cand))):
+                score += 300
+
+            if score > best_score:
+                best_score = score
+                best_id = aid
+
+        anime_id = best_id or matches[0][1]
         ep_url = f"https://anidb.app/api/frontend/anime/{anime_id}/episodes"
         req_ep = urllib.request.Request(ep_url, headers={"User-Agent": UA, "Referer": "https://anidb.app/"})
         with urllib.request.urlopen(req_ep, timeout=8) as r:
@@ -904,6 +1547,14 @@ def fetch_anidb_stream(title: str, episode: int = 1, audio: str = "sub") -> Opti
             if str(e.get("number")) == str(episode):
                 target_ep = e
                 break
+
+        if not target_ep:
+            try:
+                ep_int = int(episode)
+                if 1 <= ep_int <= len(ep_list):
+                    target_ep = ep_list[ep_int - 1]
+            except Exception:
+                pass
 
         if not target_ep:
             return None
@@ -954,7 +1605,90 @@ def get_stream(title: str, episode: int = 1, audio: str = "sub") -> Dict[str, An
     def _timed_out() -> bool:
         return time.time() > _deadline
 
-    # 1. Check AniDB First
+    # 1. Check HiAnime Primary Engine (Fast, High Quality, Active)
+    if not _timed_out():
+        hi_stream = fetch_hianime_stream(title, episode, audio)
+        if hi_stream:
+            return {
+                "success": True,
+                "data": {
+                    "type": "streams",
+                    "anime": {"title": title},
+                    "episodes": [{
+                        "episodeNumber": episode,
+                        "stream": hi_stream,
+                        "url": hi_stream["url"],
+                        "subtitles": hi_stream.get("subtitles", [])
+                    }]
+                }
+            }
+
+    # 1b. Try title prefix with HiAnime only if safe
+    q_info = parse_season_and_part(title)
+    q_subs = extract_subtitle_keywords(title)
+    has_specific_season = (q_info["season"] and q_info["season"] > 1) or (q_info["part"] and q_info["part"] > 1) or bool(q_subs)
+
+    if not _timed_out() and (":" in title or " - " in title):
+        prefix = None
+        if " - " in title:
+            cand_pref = title.split(" - ")[0].strip()
+            if not has_specific_season or any(w in cand_pref.lower() for w in q_subs):
+                prefix = cand_pref
+        elif ":" in title and not has_specific_season:
+            prefix = title.split(":")[0].strip()
+
+        if prefix and prefix.lower() != title.lower():
+            hi_stream = fetch_hianime_stream(prefix, episode, audio)
+            if hi_stream:
+                return {
+                    "success": True,
+                    "data": {
+                        "type": "streams",
+                        "anime": {"title": title},
+                        "episodes": [{
+                            "episodeNumber": episode,
+                            "stream": hi_stream,
+                            "url": hi_stream["url"],
+                            "subtitles": hi_stream.get("subtitles", [])
+                        }]
+                    }
+                }
+
+    # 1c. Try alternate catalog titles with HiAnime
+    if not _timed_out():
+        search_res = search_anime(title)
+        results = search_res.get("data", {}).get("results", [])
+        if results:
+            for item in results[:3]:
+                if _timed_out():
+                    break
+                for alt_name in [item.get("name"), item.get("englishName"), item.get("title")]:
+                    if _timed_out():
+                        break
+                    if alt_name and alt_name.lower() != title.lower():
+                        # Ensure alternate name matches season/part requirements
+                        alt_info = parse_season_and_part(alt_name)
+                        if q_info["season"] and alt_info["season"] and q_info["season"] != alt_info["season"]:
+                            continue
+                        if q_info["part"] and alt_info["part"] and q_info["part"] != alt_info["part"]:
+                            continue
+                        hi_stream = fetch_hianime_stream(alt_name, episode, audio)
+                        if hi_stream:
+                            return {
+                                "success": True,
+                                "data": {
+                                    "type": "streams",
+                                    "anime": {"title": title},
+                                    "episodes": [{
+                                        "episodeNumber": episode,
+                                        "stream": hi_stream,
+                                        "url": hi_stream["url"],
+                                        "subtitles": hi_stream.get("subtitles", [])
+                                    }]
+                                }
+                            }
+
+    # 2. Check AniDB Fallback
     anidb_stream = None
     if not _timed_out():
         anidb_stream = fetch_anidb_stream(title, episode, audio)
@@ -972,11 +1706,11 @@ def get_stream(title: str, episode: int = 1, audio: str = "sub") -> Dict[str, An
             }
         }
 
-    # 2. Check AniNeko
+    # 3. Check AniNeko Fallback
     streams = []
     if not _timed_out():
         streams = fetch_anineko_streams(title, episode, audio)
-    if not streams and ":" in title and not _timed_out():
+    if not streams and ":" in title and not _timed_out() and not has_specific_season:
         prefix = title.split(":")[0].strip()
         if prefix:
             anidb_stream = fetch_anidb_stream(prefix, episode, audio)
@@ -987,35 +1721,12 @@ def get_stream(title: str, episode: int = 1, audio: str = "sub") -> Dict[str, An
 
     if not streams and " - " in title and not _timed_out():
         prefix = title.split(" - ")[0].strip()
-        if prefix:
+        if prefix and (not has_specific_season or any(w in prefix.lower() for w in q_subs)):
             anidb_stream = fetch_anidb_stream(prefix, episode, audio)
             if anidb_stream:
                 streams = [anidb_stream]
             elif not _timed_out():
                 streams = fetch_anineko_streams(prefix, episode, audio)
-
-    if not streams and not _timed_out():
-        # Search catalog for alternate titles (romaji, english, original)
-        search_res = search_anime(title)
-        results = search_res.get("data", {}).get("results", [])
-        if results:
-            for item in results[:3]:
-                if _timed_out():
-                    break
-                for alt_name in [item.get("name"), item.get("englishName"), item.get("title")]:
-                    if _timed_out():
-                        break
-                    if alt_name and alt_name.lower() != title.lower():
-                        anidb_stream = fetch_anidb_stream(alt_name, episode, audio)
-                        if anidb_stream:
-                            streams = [anidb_stream]
-                            break
-                        if not _timed_out():
-                            streams = fetch_anineko_streams(alt_name, episode, audio)
-                        if streams:
-                            break
-                if streams:
-                    break
 
     if streams:
         first_stream = streams[0]
@@ -1040,7 +1751,7 @@ def get_stream(title: str, episode: int = 1, audio: str = "sub") -> Dict[str, An
 
     return {
         "success": False,
-        "error": f"No playable stream found for episode {episode}"
+        "error": f"No playable stream found for episode {episode} ({title})"
     }
 
 
@@ -1083,8 +1794,10 @@ def fetch_allanime_show_art(show_id: str) -> Dict[str, Any]:
             if not edges:
                 return {}
             edge = edges[0]
+            raw_thumb = edge.get("thumbnail")
+            poster = raw_thumb if (raw_thumb and str(raw_thumb).startswith("http")) else None
             return {
-                "poster": edge.get("thumbnail"),
+                "poster": poster,
                 "banner": edge.get("banner"),
                 "title": edge.get("englishName") or edge.get("name"),
             }
@@ -1423,12 +2136,22 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             report = {
                 "query": title,
                 "episode": episode,
+                "hianime": {},
                 "anidb": {},
                 "anineko": {},
                 "resolved": False,
                 "stream_url": None,
                 "proxy_test": {},
             }
+
+            try:
+                hi_stream = fetch_hianime_stream(title, episode)
+                report["hianime"] = {
+                    "success": bool(hi_stream),
+                    "url": hi_stream["url"] if hi_stream else None
+                }
+            except Exception as e:
+                report["hianime"] = {"success": False, "error": f"{type(e).__name__}: {str(e)}"}
 
             try:
                 ad_stream = fetch_anidb_stream(title, episode)
@@ -1575,9 +2298,11 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                             self.send_json({"error": f"M3U8 rewrite failed: {m3u8_err}"}, status=500)
                             return
 
-                    # Binary stream segment (.ts video)
+                    # Binary stream segment (.ts video) or subtitle track (.vtt)
                     ct = content_type or "video/mp2t"
-                    if "image/png" in ct.lower():
+                    if ".vtt" in target_url.lower() or "text/vtt" in ct.lower():
+                        ct = "text/vtt; charset=utf-8"
+                    elif "image/png" in ct.lower():
                         ct = "video/mp2t"
 
                     # Memory-efficient chunked streaming with on-the-fly disguise header stripping
@@ -1640,6 +2365,7 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             local_ip = get_local_ip()
             self.send_json({
                 "status": "ok",
+                "version": SERVER_VERSION,
                 "cli_ready": True,
                 "mpv_available": bool(mpv_path),
                 "mpv_path": mpv_path,
@@ -1734,7 +2460,7 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_json({"error": "Missing 'q' query parameter"}, status=400)
                 return
 
-            cache_key = ("metadata", "v2", title.lower().strip())
+            cache_key = ("metadata", "v5", title.lower().strip())
             cached = get_cached_cli_output(cache_key, 86400)  # 24 hours cache for maximum efficiency
             if cached:
                 self.send_json(cached)
@@ -1743,7 +2469,7 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             # Try AniList Page fuzzy search first
             ani_query = """
             query ($search: String) {
-              Page(page: 1, perPage: 4) {
+              Page(page: 1, perPage: 15) {
                 media (search: $search, type: ANIME, sort: SEARCH_MATCH) {
                   id
                   title { romaji english userPreferred }
@@ -1764,6 +2490,19 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                   averageScore
                   description(asHtml: false)
                   genres
+                  relations {
+                    edges {
+                      relationType
+                      node {
+                        id
+                        title { romaji english }
+                        episodes
+                        format
+                        seasonYear
+                        status
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1780,16 +2519,7 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                     media_list = resp_data.get("data", {}).get("Page", {}).get("media", [])
                     if media_list:
                         # Intelligent Season & Year matching to prevent Season 1 matching Season 2
-                        import re
-                        def get_sn(t_str: str) -> int:
-                            s = (t_str or "").lower()
-                            if re.search(r'\b(season\s*4|4th\s*season|iv|s4)\b', s): return 4
-                            if re.search(r'\b(season\s*3|3rd\s*season|iii|s3)\b', s): return 3
-                            if re.search(r'\b(season\s*2|2nd\s*season|ii|s2|part\s*2|two)\b', s): return 2
-                            if re.search(r'\b(season\s*1|1st\s*season|i|s1|part\s*1|one)\b', s): return 1
-                            return 1
-
-                        target_season = get_sn(title)
+                        target_info = parse_season_and_part(title)
                         year_str = query.get("year", [""])[0].strip()
                         target_year = int(year_str) if year_str.isdigit() else None
 
@@ -1800,21 +2530,33 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                             score = 0
                             t_eng = (m.get("title", {}).get("english") or "").lower()
                             t_rom = (m.get("title", {}).get("romaji") or "").lower()
-                            c_season = get_sn(t_eng) if get_sn(t_eng) != 1 else get_sn(t_rom)
+                            c_info_eng = parse_season_and_part(t_eng)
+                            c_info_rom = parse_season_and_part(t_rom)
+                            c_season = c_info_eng["season"] or c_info_rom["season"] or 1
+                            c_part = c_info_eng["part"] or c_info_rom["part"]
 
-                            if target_season == c_season:
+                            t_season = target_info["season"] or 1
+                            if t_season == c_season:
                                 score += 50
-                            elif target_season > 1 and c_season == 1:
+                            elif t_season > 1 and c_season == 1:
                                 score -= 40
-                            elif target_season == 1 and c_season > 1:
+                            elif t_season == 1 and c_season > 1:
                                 score -= 40
+                            elif t_season != c_season:
+                                score -= 60
+
+                            if target_info["part"] and c_part:
+                                if target_info["part"] == c_part:
+                                    score += 40
+                                else:
+                                    score -= 60
 
                             m_year = m.get("seasonYear")
                             if target_year and m_year:
                                 if target_year == m_year: score += 30
                                 elif abs(target_year - m_year) <= 1: score += 15
 
-                            if m.get("status") == "RELEASING" and target_season > 1:
+                            if m.get("status") == "RELEASING" and t_season > 1:
                                 score += 15
                             if "movie" in t_rom and "movie" not in title.lower():
                                 score -= 30
@@ -1822,6 +2564,116 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                             if score > best_score:
                                 best_score = score
                                 best_m = m
+
+                        # Fast Multi-Season Franchise Resolver (<0.6s)
+                        try:
+                            _VALID_FORMATS = ("TV", "TV_SHORT", "ONA", "MOVIE", "SPECIAL", "OVA", None)
+                            _franchise_nodes = {}
+                            _to_fetch_ids = set()
+
+                            # 1. Seed from best_m direct relations
+                            for _e in (best_m.get("relations", {}).get("edges") or []):
+                                _rtype = _e.get("relationType")
+                                _n = _e.get("node") or {}
+                                _nid = _n.get("id")
+                                _fmt = _n.get("format")
+                                if _rtype in ("SEQUEL", "PREQUEL", "SIDE_STORY") and _nid and _fmt in _VALID_FORMATS:
+                                    _franchise_nodes[_nid] = _n
+                                    _to_fetch_ids.add(_nid)
+
+                            # 2. Check relations of other media items in the 15 search results
+                            for _om in media_list:
+                                _omid = _om.get("id")
+                                if _omid == best_m.get("id"):
+                                    continue
+                                if _om.get("format") in _VALID_FORMATS:
+                                    _linked = False
+                                    for _oe in (_om.get("relations", {}).get("edges") or []):
+                                        _ornid = _oe.get("node", {}).get("id")
+                                        if _ornid == best_m.get("id") or _ornid in _franchise_nodes:
+                                            _linked = True
+                                            break
+                                    if _linked:
+                                        _franchise_nodes[_omid] = _om
+                                        for _oe in (_om.get("relations", {}).get("edges") or []):
+                                            if _oe.get("relationType") in ("SEQUEL", "PREQUEL", "SIDE_STORY"):
+                                                _oen = _oe.get("node") or {}
+                                                _oen_id = _oen.get("id")
+                                                if _oen_id and _oen_id != best_m.get("id") and _oen.get("format") in _VALID_FORMATS:
+                                                    if _oen_id not in _franchise_nodes:
+                                                        _franchise_nodes[_oen_id] = _oen
+                                                        _to_fetch_ids.add(_oen_id)
+
+                            # 3. Single batch query for any relation IDs not already in media_list
+                            _known_ids = {best_m.get("id")}.union(set(_franchise_nodes.keys()))
+                            _unfetched = [nid for nid in _to_fetch_ids if nid not in [m.get("id") for m in media_list]]
+                            if _unfetched:
+                                _batch_query = """
+                                query ($ids: [Int]) {
+                                  Page(page: 1, perPage: 25) {
+                                    media(id_in: $ids) {
+                                      id
+                                      title { romaji english }
+                                      format
+                                      seasonYear
+                                      status
+                                      relations {
+                                        edges {
+                                          relationType
+                                          node {
+                                            id
+                                            title { romaji english }
+                                            format
+                                            seasonYear
+                                            status
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                                """
+                                _b_req = urllib.request.Request(
+                                    "https://graphql.anilist.co",
+                                    data=json.dumps({"query": _batch_query, "variables": {"ids": _unfetched[:25]}}).encode("utf-8"),
+                                    headers={"Content-Type": "application/json", "User-Agent": UA}
+                                )
+                                with urllib.request.urlopen(_b_req, timeout=6) as _b_resp:
+                                    _b_medias = json.loads(_b_resp.read().decode("utf-8")).get("data", {}).get("Page", {}).get("media", [])
+                                    for _bm in _b_medias:
+                                        _bm_id = _bm.get("id")
+                                        _franchise_nodes[_bm_id] = _bm
+                                        for _be in (_bm.get("relations", {}).get("edges") or []):
+                                            if _be.get("relationType") in ("SEQUEL", "PREQUEL", "SIDE_STORY"):
+                                                _bn = _be.get("node") or {}
+                                                _bn_id = _bn.get("id")
+                                                if _bn_id and _bn_id != best_m.get("id") and _bn.get("format") in _VALID_FORMATS:
+                                                    if _bn_id not in _franchise_nodes:
+                                                        _franchise_nodes[_bn_id] = _bn
+
+                            # 4. Rebuild best_m["relations"]["edges"]
+                            _my_year = best_m.get("seasonYear") or 0
+                            _final_edges = []
+                            for _nid, _n in _franchise_nodes.items():
+                                if _nid == best_m.get("id"):
+                                    continue
+                                _ny = _n.get("seasonYear") or 0
+                                _rtype = "PREQUEL" if (_ny and _ny < _my_year) else "SEQUEL"
+                                _final_edges.append({
+                                    "relationType": _rtype,
+                                    "node": {
+                                        "id": _nid,
+                                        "title": _n.get("title", {}),
+                                        "format": _n.get("format"),
+                                        "seasonYear": _n.get("seasonYear"),
+                                        "status": _n.get("status")
+                                    }
+                                })
+                            if _final_edges:
+                                best_m.setdefault("relations", {})["edges"] = _final_edges
+                        except Exception:
+                            pass
+                        # Fast Franchise Resolved
 
                         res_body = {"success": True, "data": best_m}
                         set_cached_cli_output(cache_key, res_body)
@@ -1987,7 +2839,7 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
             cache_key = ("episodes", title, mode, str(index))
-            cached = get_cached_cli_output(cache_key, 600)  # 10 minutes
+            cached = get_cached_cli_output(cache_key, 300)  # 5 minutes — HiAnime data changes intra-day as episodes air
             if cached:
                 self.send_json(cached)
                 return
@@ -2018,6 +2870,7 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             index_str = query.get("index", ["1"])[0].strip()
             index = int(index_str) if index_str.isdigit() else 1
             episode_str = query.get("episode", ["1"])[0].strip()
+            audio = query.get("audio", ["sub"])[0].strip() or "sub"
             # Fix 13: isdigit() fails for decimal episodes like "1.5" — use float-safe parser
             try:
                 _ep_f = float(episode_str) if episode_str else 1.0
@@ -2029,7 +2882,7 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_json({"error": "Missing 'query' or 'mode' parameter"}, status=400)
                 return
 
-            cache_key = ("stream", title, mode, str(index), str(episode))
+            cache_key = ("stream", title, mode, str(index), str(episode), audio)
             cached = get_cached_cli_output(cache_key, 120)  # Fix 10: 2 min — CDN URLs expire in 3-6 min; 30 min caused stale URL serving
             if cached:
                 self.send_json(cached)
@@ -2048,7 +2901,7 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                     if items and index <= len(items):
                         target_title = items[index - 1].get("title", "")
 
-            res = get_stream(target_title, episode=episode)
+            res = get_stream(target_title, episode=episode, audio=audio)
             if res.get("success"):
                 set_cached_cli_output(cache_key, res)
             self.send_json(res)
@@ -2061,6 +2914,7 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             index = int(index_str) if index_str.isdigit() else 1
             episode_str = query.get("episode", ["1"])[0].strip()
             episode = int(episode_str) if episode_str.isdigit() else 1
+            audio = query.get("audio", ["sub"])[0].strip() or "sub"
 
             if not title and not mode:
                 self.send_json({"error": "Missing 'query' or 'mode' parameter"}, status=400)
@@ -2079,7 +2933,7 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                     if items and index <= len(items):
                         target_title = items[index - 1].get("title", "")
 
-            res = get_stream(target_title, episode=episode)
+            res = get_stream(target_title, episode=episode, audio=audio)
             if res.get("success") and res.get("data", {}).get("episodes"):
                 ep_obj = res["data"]["episodes"][0]
                 stream_url = ep_obj.get("url")
@@ -2089,15 +2943,21 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 if not mpv_path:
                     self.send_json({"success": False, "error": "MPV Player was not found on your PC."}, status=404)
                     return
+                mpv_cmd = [mpv_path, stream_url, f"--http-header-fields=Referer: {referer}", f"--title={target_title} - Episode {episode}"]
+                subtitles = stream_meta.get("subtitles") or ep_obj.get("subtitles") or []
+                for sub in subtitles:
+                    if sub.get("src"):
+                        mpv_cmd.append(f"--sub-file={sub['src']}")
+
                 try:
                     subprocess.Popen(
-                        [mpv_path, stream_url, f"--http-header-fields=Referer: {referer}", f"--title={target_title} - Episode {episode}"],
+                        mpv_cmd,
                         stdin=subprocess.DEVNULL,
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                         **hidden_subprocess_kwargs()
                     )
-                    self.send_json({"success": True, "message": f"Playing Episode {episode} in MPV"})
+                    self.send_json({"success": True, "message": f"Playing Episode {episode} in MPV with subtitles"})
                 except Exception as e:
                     self.send_json({"success": False, "error": str(e)}, status=500)
             else:
@@ -2156,7 +3016,7 @@ def run_server(port: int = 3000):
         if sys.stdout is not None:
             try:
                 print("==========================================================")
-                print("  [Erumi] Anime Streaming Web Server Running!")
+                print(f"  [Erumi] Anime Streaming Web Server {SERVER_VERSION} Running!")
                 print(f"  Local PC URL:       http://localhost:{port}")
                 print(f"  Same Wi-Fi LAN URL: http://{local_ip}:{port}")
                 print("  (Open the Wi-Fi URL on your Phone, Tablet, or Smart TV)")

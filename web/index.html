@@ -20,7 +20,7 @@
   <script src="hls.min.js"></script>
   <!-- Feather Icons (bundled for APK offline use) -->
   <script src="feather.min.js"></script>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=2.7.8">
 </head>
 <body>
 
@@ -263,6 +263,23 @@
           </div>
         </div>
 
+        <!-- Genre Filter Chips Row -->
+        <div class="genre-chips-row" id="genreChipsRow">
+          <button class="genre-chip-btn active" data-genre="All" onclick="app.loadGenreFilter('All')">All</button>
+          <button class="genre-chip-btn" data-genre="Action" onclick="app.loadGenreFilter('Action')">Action</button>
+          <button class="genre-chip-btn" data-genre="Adventure" onclick="app.loadGenreFilter('Adventure')">Adventure</button>
+          <button class="genre-chip-btn" data-genre="Comedy" onclick="app.loadGenreFilter('Comedy')">Comedy</button>
+          <button class="genre-chip-btn" data-genre="Drama" onclick="app.loadGenreFilter('Drama')">Drama</button>
+          <button class="genre-chip-btn" data-genre="Fantasy" onclick="app.loadGenreFilter('Fantasy')">Fantasy</button>
+          <button class="genre-chip-btn" data-genre="Romance" onclick="app.loadGenreFilter('Romance')">Romance</button>
+          <button class="genre-chip-btn" data-genre="Sci-Fi" onclick="app.loadGenreFilter('Sci-Fi')">Sci-Fi</button>
+          <button class="genre-chip-btn" data-genre="Mystery" onclick="app.loadGenreFilter('Mystery')">Mystery</button>
+          <button class="genre-chip-btn" data-genre="Horror" onclick="app.loadGenreFilter('Horror')">Horror</button>
+          <button class="genre-chip-btn" data-genre="Sports" onclick="app.loadGenreFilter('Sports')">Sports</button>
+          <button class="genre-chip-btn" data-genre="Supernatural" onclick="app.loadGenreFilter('Supernatural')">Supernatural</button>
+          <button class="genre-chip-btn" data-genre="Thriller" onclick="app.loadGenreFilter('Thriller')">Thriller</button>
+        </div>
+
         <!-- Loading State -->
         <div id="loader" class="loader-container" style="display: none;">
           <div class="loader-mascot-wrap">
@@ -388,11 +405,34 @@
           <!-- Cinema Video Container -->
           <div class="player-cinema-frame">
             <div class="video-container" id="videoContainer">
-              <video id="videoPlayer" class="video-element" controls playsinline></video>
+              <video id="videoPlayer" class="video-element" controls playsinline crossorigin="anonymous"></video>
+              <div id="videoSubtitlesOverlay" class="video-subtitles-overlay" style="display: none;"></div>
               <div id="videoLoader" class="video-loader" style="display: none;">
                 <img class="loader-mascot-mini" src="erumi.png" alt="Streaming...">
                 <div class="spinner"></div>
                 <span id="videoStatusText">Resolving stream URL...</span>
+              </div>
+              <!-- In-Player Error Recovery Overlay -->
+              <div id="inplayerErrorOverlay" class="inplayer-error-overlay" style="display:none;">
+                <div class="inplayer-error-icon">
+                  <i data-feather="alert-triangle"></i>
+                </div>
+                <p class="inplayer-error-title" id="inplayerErrorTitle">Stream Failed</p>
+                <p class="inplayer-error-msg" id="inplayerErrorMsg">Could not load this episode. Try a different server or audio track.</p>
+                <div class="inplayer-error-actions">
+                  <button class="btn btn-sm btn-primary" onclick="app.retryStream()">
+                    <i data-feather="refresh-cw"></i> Retry
+                  </button>
+                  <button class="btn btn-sm btn-glass" onclick="app.playNextEpisode()">
+                    <i data-feather="skip-forward"></i> Next Ep
+                  </button>
+                  <button class="btn btn-sm btn-glass" onclick="app.toggleSubDub()">
+                    <i data-feather="headphones"></i> Switch Audio
+                  </button>
+                  <button class="btn btn-sm btn-glass" onclick="app.launchInMpv()">
+                    <i data-feather="external-link"></i> MPV
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -417,6 +457,37 @@
             </div>
 
             <div class="action-bar-right">
+              <!-- Sub/Dub Quick Toggle -->
+              <button class="sub-dub-toggle-btn" id="subDubToggleBtn" onclick="app.toggleSubDub()" title="Toggle Sub/Dub">
+                <i data-feather="headphones"></i>
+                <span id="subDubToggleText">SUB</span>
+              </button>
+              <!-- Skip Intro Button (shown during intro window) -->
+              <button class="skip-intro-btn" id="skipIntroBtn" onclick="app.skipIntro()" title="Skip Opening">
+                <i data-feather="fast-forward"></i> Skip Intro
+              </button>
+              <!-- Playback Speed Control -->
+              <div class="speed-control-wrap" id="speedControlWrap">
+                <button class="speed-control-btn" id="speedControlBtn" onclick="app.toggleSpeedDropdown()" title="Playback Speed">
+                  <i data-feather="zap"></i>
+                  <span id="speedLabel">1×</span>
+                </button>
+                <div class="speed-dropdown" id="speedDropdown">
+                  <button class="speed-dropdown-item" onclick="app.setPlaybackSpeed(0.5)">0.5×</button>
+                  <button class="speed-dropdown-item" onclick="app.setPlaybackSpeed(0.75)">0.75×</button>
+                  <button class="speed-dropdown-item active" onclick="app.setPlaybackSpeed(1)">1× (Normal)</button>
+                  <button class="speed-dropdown-item" onclick="app.setPlaybackSpeed(1.25)">1.25×</button>
+                  <button class="speed-dropdown-item" onclick="app.setPlaybackSpeed(1.5)">1.5×</button>
+                  <button class="speed-dropdown-item" onclick="app.setPlaybackSpeed(2)">2×</button>
+                </div>
+              </div>
+              <div class="subtitle-select-wrap" id="subtitleSelectWrap" title="Subtitle Track">
+                <i data-feather="message-square" style="width: 14px; height: 14px; margin-right: 6px; color: var(--primary);"></i>
+                <select id="subtitleSelect" class="subtitle-select">
+                  <option value="off">Subs: Off</option>
+                  <option value="en" selected>Subs: English</option>
+                </select>
+              </div>
               <button class="btn btn-sm btn-glass mobile-only-btn" id="fullscreenBtn" onclick="app.toggleFullscreen()" title="Fullscreen">
                 <i data-feather="maximize"></i>
                 <span>Fullscreen</span>
@@ -462,6 +533,17 @@
             <div class="sidebar-title-wrap">
               <h3 class="sidebar-title">Episodes</h3>
               <span id="sidebarEpCount" class="sidebar-count">0 episodes</span>
+            </div>
+            <!-- Season / Franchise Dropdown Switcher (populated by JS) -->
+            <div class="season-switcher-wrap" id="seasonSwitcherWrap" style="display:none;">
+              <button class="season-select-btn" id="seasonSelectBtn" type="button" onclick="app.toggleSeasonDropdown()" title="Switch Season / Franchise">
+                <i data-feather="layers" class="season-select-icon"></i>
+                <span class="season-select-label" id="seasonSelectLabel">Season 1</span>
+                <i data-feather="chevron-down" class="season-select-arrow" id="seasonSelectArrow"></i>
+              </button>
+              <div class="season-dropdown-menu" id="seasonDropdownMenu">
+                <!-- Dropdown options injected by JS -->
+              </div>
             </div>
           </div>
 
@@ -548,7 +630,7 @@
           </div>
 
           <div class="about-footer-meta">
-            <span>Version 2.0.0 · Teal Cinema Edition</span>
+            <span>Version 2.8.2 · Teal Cinema Edition</span>
             <span>Built for anime fans everywhere</span>
           </div>
         </div>
@@ -769,7 +851,7 @@
               </div>
               <div class="sys-info-row">
                 <span>Server Version</span>
-                <strong>v2.5.0</strong>
+                <strong id="sysServerVersion">v2.8.2</strong>
               </div>
               <div class="sys-info-row">
                 <span>Streaming Engine</span>
@@ -831,7 +913,7 @@
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="toast-container"></div>
 
-  <script src="app.js?v=2.7.2"></script>
+  <script src="app.js?v=2.7.8"></script>
   <script>
     feather.replace();
   </script>
