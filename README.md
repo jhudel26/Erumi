@@ -37,7 +37,7 @@
 <br>
 
 <div align="center">
-  <img src="./favicon/android-chrome-192x192.png" alt="Erumi Stream Splash Banner" width="80%" />
+  <img src="./favicon/Splasherumi.png" alt="Erumi Stream Splash Banner" width="80%" />
 </div>
 
 <br>
@@ -78,29 +78,39 @@
 
 ---
 
-## 📸 Screenshots & Showcase
+## 📸 Screenshots
 
-### Application Preview
+### Desktop View
 <table>
   <tr>
-    <td width="50%" align="center">
-      <img src="./favicon/Splasherumi.png" alt="Erumi Stream UI" width="100%" />
-      <p><b>Cinema Web Experience & Splash Screen</b></p>
+    <td width="50%">
+      <img src="./screenshots/desktophome.png" alt="Desktop Home View" width="100%" />
+      <p align="center"><b>Home & Featured Spotlight</b></p>
     </td>
-    <td width="50%" align="center">
-      <img src="./web/android-chrome-512x512.png" alt="Erumi Mascot & Icon" width="60%" />
-      <p><b>Erumi Mascot & Native App Icon</b></p>
+    <td width="50%">
+      <img src="./screenshots/desktop_latest.png" alt="Desktop Latest Releases" width="100%" />
+      <p align="center"><b>Latest Releases & Recommendations</b></p>
     </td>
   </tr>
   <tr>
-    <td width="50%" align="center">
-      <img src="./favicon/apple-touch-icon.png" alt="Touch Icon" width="45%" />
-      <p><b>Mobile / PWA Icon</b></p>
+    <td width="50%">
+      <img src="./screenshots/desktop%20search.png" alt="Desktop Search View" width="100%" />
+      <p align="center"><b>Anime Search & Filtering</b></p>
     </td>
-    <td width="50%" align="center">
-      <img src="./web/erumi.png" alt="Erumi Character Avatar" width="45%" />
-      <p><b>Brand Avatar Asset</b></p>
+    <td width="50%">
+      <img src="./screenshots/desktopwatch.png" alt="Desktop Cinema Player" width="100%" />
+      <p align="center"><b>Cinema Player & Episode Selector</b></p>
     </td>
+  </tr>
+</table>
+
+### Mobile Responsiveness
+<table>
+  <tr>
+    <td width="25%"><img src="./screenshots/mobilehome.png" alt="Mobile Home" width="100%" /><p align="center"><b>Home</b></p></td>
+    <td width="25%"><img src="./screenshots/mobile_latest.png" alt="Mobile Latest" width="100%" /><p align="center"><b>Latest Releases</b></p></td>
+    <td width="25%"><img src="./screenshots/mobilesearch.png" alt="Mobile Search" width="100%" /><p align="center"><b>Search</b></p></td>
+    <td width="25%"><img src="./screenshots/mobilewatch.png" alt="Mobile Watch" width="100%" /><p align="center"><b>Cinema Watch</b></p></td>
   </tr>
 </table>
 
