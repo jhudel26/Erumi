@@ -118,33 +118,39 @@ Erumi operates across two distinct deployment modes — a native Desktop GUI pip
 
 ```mermaid
 graph TD
-    User[End User] --> Desktop[Erumi.exe Desktop GUI]
-    User --> Browser[Web Browser]
+    User[End User] --> Browser[Web Browser]
     User --> APK[Capacitor Android APK]
 
-    subgraph Desktop Mode
-        Desktop --> CLI[Yorumi CLI Node.js]
-        CLI --> MPV[mpv Player]
+    subgraph Server [Erumi Server Engine]
+        ServerApp[ErumiServer.exe / web_server.py]
+        Proxy[HLS Reverse Proxy & Rewriter]
+        Cache[In-Memory TTL Cache]
+        Scraper[Multi-Source Resolver Engine]
+        
+        ServerApp --> Scraper
+        ServerApp --> Proxy
+        ServerApp --> Cache
     end
 
-    subgraph Server Mode
-        Browser --> Server[ErumiServer.exe]
-        APK -- Wi-Fi LAN --> Server
-        Server --> CLI2[Yorumi CLI Node.js]
-        Server --> Proxy[HLS Proxy & Rewriter]
-        Server --> Cache[In-Memory TTL Cache]
+    subgraph External [Data & Streaming Providers]
+        AllAnime[AllAnime GraphQL API]
+        AniList[AniList GraphQL API]
+        HiAnime[HiAnime.at Scraper]
+        AniDB[AniDB / AniNeko Sources]
+        CDN[Upstream Video CDNs / HLS Streams]
     end
 
-    subgraph External Services
-        CLI --> AllAnime[AllAnime GraphQL API]
-        CLI2 --> AllAnime
-        Server --> AniList[AniList GraphQL API]
-        Server --> HiAnime[HiAnime.at Scraper]
-        Proxy --> CDN[Upstream Video CDNs]
-    end
+    Browser -- Local HTTP / LAN --> ServerApp
+    APK -- Wi-Fi LAN --> ServerApp
 
-    Server -- Serves Web Assets --> Browser
-    Server -- Serves Web Assets --> APK
+    Scraper -- Search & Episodes --> AllAnime
+    Scraper -- Metadata & Posters --> AniList
+    Scraper -- Primary Streams --> HiAnime
+    Scraper -- Fallback Streams --> AniDB
+
+    Proxy -- Fetches & Decrypts Segments --> CDN
+    Proxy -- Rewritten M3U8 Stream --> Browser
+    Proxy -- Rewritten M3U8 Stream --> APK
 ```
 
 ### 🛠️ Tech Stack
@@ -164,9 +170,9 @@ graph TD
 - **Concurrency**: Python `threading` & `queue.Queue` for non-blocking CLI processes
 - **Security**: Built-in SSRF validation with strict CDN hostname whitelisting
 
-#### **CLI Stream Engine**
-- **Yorumi CLI**: Node.js `.cjs` resolver that handles third-party stream extraction
-- Executed through silent subprocess pipelines using Windows `CREATE_NO_WINDOW`
+#### **CLI & Desktop Playback Engine**
+- **Desktop GUI (`main.py`)**: Uses the Node.js **Yorumi CLI** (`yorumi-cli.cjs`) to query streams and pipe playback into native **mpv**.
+- **Web Server (`web_server.py`)**: Pure Python implementation with direct GraphQL and HTTP scrapers (AllAnime, AniList, HiAnime) with no Node.js runtime needed in web mode.
 
 #### **Mobile & Build Tools**
 - **Mobile Container**: Capacitor 7 (`@capacitor/core`, `@capacitor/android`, `@capacitor/splash-screen`)
@@ -329,3 +335,4 @@ Distributed under the MIT License. See `LICENSE` for more information.
 *Erumi Stream — Watch anime. Quietly.*
 
 </div>
+
