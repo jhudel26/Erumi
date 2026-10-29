@@ -45,10 +45,6 @@
 ## ✨ Features
 
 - **🎬 Unified Streaming Experience**: Seamlessly watch anime in-browser with HLS.js and auto-quality selection (1080p default).
-- **🖥️ Desktop GUI Mode (`Erumi.exe`)**:
-    - Native Windows application built with **CustomTkinter**.
-    - Launches anime episodes directly in **mpv** media player for minimal latency and hardware-accelerated rendering.
-    - Embedded activity log with real-time CLI subprocess monitoring and safe timeout protection.
 - **📡 Web Server Mode (`ErumiServer.exe`)**:
     - Standalone desktop controller with an embedded Jellyfin-style local streaming backend.
     - Runs a high-performance HTTP server (`http://localhost:3000`) accessible across all devices on the same Wi-Fi.
