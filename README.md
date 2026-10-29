@@ -37,7 +37,7 @@
 <br>
 
 <div align="center">
-  <img src="./favicon/Splasherumi.png" alt="Erumi Stream Splash Banner" width="80%" />
+  <img src="./screenshots/desktophome.png" alt="Erumi Stream Splash Banner" width="80%" />
 </div>
 
 <br>
