@@ -30,7 +30,7 @@
 > **PLEASE READ CAREFULLY BEFORE USING OR CONTRIBUTING:**
 >
 > 1. **No Content Ownership**: This project does **NOT** host, store, or distribute any copyrighted files (videos, images, or audio). All content is fetched in real-time from third-party publicly available sources (e.g., AllAnime, AniList, HiAnime).
-> 2. **Educational Use**: This source code is strictly for **educational and research purposes**. It demonstrates modern Python GUI development, high-performance HTTP server architecture, HLS proxy streaming, and cross-platform web/APK deployment techniques.
+> 2. **Educational Use**: This source code is strictly for **educational and research purposes**. It demonstrates high-performance HTTP server architecture, HLS proxy streaming, and cross-platform web/APK deployment techniques.
 > 3. **Legal Liability**: The developers and contributors of this repository assume **NO LIABILITY** for any misuse of this software. Users are solely responsible for ensuring their usage complies with local laws and the Terms of Service of the source websites.
 > 4. **No Commercial Use**: This project is **NOT** for sale and should not be used for any commercial activities.
 
@@ -45,7 +45,7 @@
 ## ✨ Features
 
 - **🎬 Unified Streaming Experience**: Seamlessly watch anime in-browser with HLS.js and auto-quality selection (1080p default).
-- **📡 Web Server Mode (`ErumiServer.exe`)**:
+- **📡 Local Streaming Server (`ErumiServer.exe`)**:
     - Standalone desktop controller with an embedded Jellyfin-style local streaming backend.
     - Runs a high-performance HTTP server (`http://localhost:3000`) accessible across all devices on the same Wi-Fi.
     - **QR Code & LAN Share**: Scan the built-in QR code or copy the Wi-Fi link to stream immediately on phones, tablets, or Smart TVs.
@@ -114,7 +114,7 @@
 
 ## 🏗️ Architecture
 
-Erumi operates across two distinct deployment modes — a native Desktop GUI pipeline and a local LAN Web Server with browser/mobile clients.
+Erumi operates as a high-performance local streaming server with a lightweight desktop controller, serving responsive web browser and Android mobile clients across your local network.
 
 ```mermaid
 graph TD
@@ -175,7 +175,7 @@ graph TD
 
 #### **Mobile & Build Tools**
 - **Mobile Container**: Capacitor 7 (`@capacitor/core`, `@capacitor/android`, `@capacitor/splash-screen`)
-- **Desktop Bundler**: PyInstaller (spec files for `Erumi.exe` and `ErumiServer.exe`)
+- **Desktop Bundler**: PyInstaller (spec file for `ErumiServer.exe`)
 - **Windows Installer**: Inno Setup Compiler (`erumi_installer.iss`)
 
 ---
@@ -186,7 +186,6 @@ graph TD
 
 Make sure the following tools are installed on your machine:
 - **Python** (v3.10 or higher)
-- **mpv Media Player** — optional, for Desktop GUI playback (`main.py` / `Erumi.exe`)
 - **Git**
 
 ### Installation
@@ -211,11 +210,15 @@ Make sure the following tools are installed on your machine:
 
 ### Running Locally
 
-#### 1. Web Server Mode (Recommended for Web & LAN Streaming)
+#### Start the Server Controller
 
 Run the desktop server controller:
 ```bash
 python server_app.py
+```
+*Or run the headless web server directly:*
+```bash
+python web_server.py
 ```
 *Or launch directly via batch file:*
 ```bash
@@ -224,24 +227,9 @@ start_web.bat
 - The server will bind to `http://localhost:3000` and automatically launch your default browser.
 - Other phones, tablets, or computers on your Wi-Fi can connect directly via `http://<YOUR_PC_IP>:3000`.
 
-#### 2. Desktop GUI Mode (Direct mpv Playback)
-
-Run the CustomTkinter desktop interface:
-```bash
-python main.py
-```
-- Enter an anime title in the search field and press **Search**.
-- Select your title and episode to immediately open and stream in **mpv**.
-
 ---
 
 ### 📦 Building Standalone Executables
-
-#### Build Desktop GUI (`Erumi.exe`)
-```bat
-build.bat
-```
-Generates `dist\Erumi.exe`.
 
 #### Build Server App (`ErumiServer.exe`)
 ```bat
@@ -273,7 +261,6 @@ Open and compile `erumi_installer.iss` using [Inno Setup](https://jrsoftware.org
 
 ```bash
 erumi-stream/
-├── main.py                  # Standalone Desktop GUI (Erumi.exe)
 ├── server_app.py            # Server Controller App (ErumiServer.exe)
 ├── web_server.py            # High-performance HTTP Server, REST API & HLS Proxy
 ├── requirements.txt         # Python dependencies
@@ -294,9 +281,7 @@ erumi-stream/
 ├── capacitor.config.json    # Capacitor configuration
 ├── package.json             # Node.js and Capacitor scripts
 │
-├── build.bat                # PyInstaller build script for Desktop GUI
 ├── build_server.bat         # PyInstaller build script for Server App
-├── build.spec               # PyInstaller spec definition for main.py
 ├── build_server.spec        # PyInstaller spec definition for server_app.py
 ├── erumi_installer.iss      # Inno Setup installation compiler script
 ├── start_web.bat            # Quick launch script for Web Server
