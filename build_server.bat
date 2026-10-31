@@ -19,7 +19,6 @@ if errorlevel 1 (
     exit /b 1
 )
 
-copy /Y "yorumi-cli.cmd" "dist\yorumi-cli.cmd" >nul
 xcopy /E /I /Y "web" "dist\web" >nul
 xcopy /E /I /Y "favicon" "dist\favicon" >nul
 

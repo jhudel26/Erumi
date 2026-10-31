@@ -135,8 +135,6 @@ def web_dir() -> Path:
 
 APP_DIR = app_dir()
 WEB_DIR = web_dir()
-DEFAULT_CLI = APP_DIR / "yorumi-cli.cmd"
-FALLBACK_CLI = Path(os.environ.get("LOCALAPPDATA", "")) / "YorumiCLI" / "bin" / "yorumi-cli.cmd"
 
 DEFAULT_CONFIG = {
     "server": {
@@ -207,44 +205,6 @@ def get_local_ip() -> str:
             return "127.0.0.1"
 
 
-def resolve_node() -> str:
-    return shutil.which("node") or r"C:\Program Files\nodejs\node.exe"
-
-
-def resolve_cli_argv(args: list) -> List[str]:
-    node = resolve_node()
-    candidates_cjs = [
-        app_dir() / "yorumi-cli-main" / "bin" / "yorumi-cli.cjs",
-        app_dir().parent / "yorumi-cli-main" / "bin" / "yorumi-cli.cjs",
-    ]
-    for cjs in candidates_cjs:
-        if cjs.exists():
-            return [node, str(cjs), *args]
-
-    candidates_cmd = [
-        app_dir() / "yorumi-cli.cmd",
-        app_dir().parent / "yorumi-cli.cmd",
-        FALLBACK_CLI,
-    ]
-    for cmd in candidates_cmd:
-        if cmd.exists():
-            return [str(cmd), *args]
-
-    return [node, str(candidates_cjs[0]), *args]
-
-
-def resolve_cli_cwd() -> str:
-    candidates = [
-        app_dir() / "yorumi-cli-main",
-        app_dir().parent / "yorumi-cli-main",
-        app_dir(),
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            return str(candidate)
-    return str(app_dir())
-
-
 def hidden_subprocess_kwargs() -> dict:
     if sys.platform != "win32":
         return {}
@@ -269,61 +229,6 @@ def resolve_mpv_path() -> Optional[str]:
         if os.path.exists(candidate):
             return candidate
     return shutil.which("mpv")
-
-
-def parse_json_output(raw: str) -> Optional[dict]:
-    text = (raw or "").strip()
-    if not text:
-        return None
-    try:
-        data = json.loads(text)
-        return data if isinstance(data, dict) else None
-    except json.JSONDecodeError:
-        pass
-    start = text.rfind("{")
-    end = text.rfind("}")
-    if start >= 0 and end > start:
-        try:
-            data = json.loads(text[start : end + 1])
-            return data if isinstance(data, dict) else None
-        except json.JSONDecodeError:
-            return None
-    return None
-
-
-def run_cli_command(args: list, timeout_sec: int = 25) -> Dict[str, Any]:
-    argv = resolve_cli_argv(args)
-    cwd = resolve_cli_cwd()
-    
-    try:
-        process = subprocess.Popen(
-            argv,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            stdin=subprocess.DEVNULL,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            cwd=cwd,
-            **hidden_subprocess_kwargs(),
-        )
-        
-        try:
-            output, error = process.communicate(timeout=timeout_sec)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            output, error = process.communicate()
-
-        parsed = parse_json_output(output or "")
-        if parsed:
-            return {"success": True, "data": parsed}
-        
-        if process.returncode != 0 and error:
-            return {"success": False, "error": error.strip(), "code": process.returncode}
-            
-        return {"success": True, "raw": (output or "").strip(), "error": (error or "").strip()}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
 
 
 def strip_disguise_header(buf: bytes) -> bytes:
@@ -2067,9 +1972,11 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             pass
 
     def end_headers(self):
-        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
-        self.send_header("Pragma", "no-cache")
-        self.send_header("Expires", "0")
+        path = getattr(self, "path", "")
+        if path.startswith("/api/") or "/api/" in path:
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
         super().end_headers()
 
     def send_json(self, data: Any, status: int = 200):
@@ -2262,6 +2169,7 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 headers=proxy_headers,
             )
 
+            headers_sent = False
             try:
                 # Fix 13b: Increase upstream timeout to 60 s — AniDB CDN segments can be
                 # 400-500 KB and travel through a proxy hop; 20 s was too tight and caused
@@ -2281,11 +2189,11 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                             text = body.decode("utf-8", errors="replace")
                             rewritten_text = rewrite_m3u8(text, target_url, referer)
                             out_bytes = rewritten_text.encode("utf-8")
+                            headers_sent = True
                             self.send_response(200)
                             self.send_header("Content-Type", "application/vnd.apple.mpegurl")
                             self.send_header("Content-Length", str(len(out_bytes)))
                             self.send_header("Access-Control-Allow-Origin", "*")
-                            self.send_header("Cache-Control", "no-store")
                             self.end_headers()
                             self.wfile.write(out_bytes)
                             return
@@ -2324,6 +2232,7 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                     # full segment. Without this, a Range-resumed response was sent as 200 with
                     # a mis-sized Content-Length, confusing HLS.js into thinking the segment was
                     # truncated and triggering another fragLoadTimeOut.
+                    headers_sent = True
                     self.send_response(upstream_status)
                     self.send_header("Content-Type", ct)
                     if content_length:
@@ -2336,7 +2245,6 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                     if content_range:
                         self.send_header("Content-Range", content_range)
                     self.send_header("Access-Control-Allow-Origin", "*")
-                    self.send_header("Cache-Control", "no-store")
                     self.end_headers()
 
                     if stripped_chunk:
@@ -2356,6 +2264,8 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                     except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
                         pass
             except Exception as e:
+                if not headers_sent:
+                    self.send_json({"error": f"Proxy fetch failed: {str(e)}"}, status=502)
                 self.send_json({"error": f"Proxy fetch failed: {str(e)}"}, status=502)
             return
 
@@ -2753,7 +2663,9 @@ class ErumiHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_json(cached)
                 return
             res = search_anime(q)
-            if res.get("success"):
+            results = res.get("data", {}).get("results", []) if res.get("success") else []
+            # Only cache if we actually found results so transient network failures aren't locked in
+            if results:
                 set_cached_cli_output(cache_key, res)
             self.send_json(res)
             return
